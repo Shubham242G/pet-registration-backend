@@ -13,20 +13,15 @@ const userSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // ✅ FIX 1: Auto-hash passwords (CRITICAL)
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
+userSchema.pre('save', async function () {
+  if (!this.isModified('password')) return;
   this.password = await bcrypt.hash(this.password, 12);
-  next();
 });
 
-// ✅ FIX 2: Soft delete queries
 userSchema.pre(/^find/, function() {
   this.where({ isDeleted: false });
 });
 
-// ✅ FIX 3: Async compare (CRITICAL)
 userSchema.methods.comparePassword = async function(password) {
   return await bcrypt.compare(password, this.password);
 };
-
-module.exports = mongoose.model('User', userSchema);
