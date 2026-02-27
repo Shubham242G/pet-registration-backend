@@ -5,29 +5,28 @@ require('dotenv').config();
 
 const app = express();
 
-const allowedOrigins = [
-  "http://localhost:3000",
-  "https://pet-registry-website.vercel.app"
-];
+
 
 
 // Security & Performance middleware
 app.use(
   cors({
     origin: function (origin, callback) {
-      // allow requests with no origin (like Postman)
       if (!origin) return callback(null, true);
 
-      if (allowedOrigins.includes(origin)) {
+      if (
+        origin.includes("vercel.app") ||
+        origin === "http://localhost:3000"
+      ) {
         callback(null, true);
       } else {
         callback(new Error("Not allowed by CORS"));
       }
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   })
 );
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
