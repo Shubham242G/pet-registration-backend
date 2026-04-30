@@ -9,24 +9,62 @@ const app = express();
 
 
 // Security & Performance middleware
+const allowedOrigins = [
+  // Local development
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  'http://127.0.0.1:5173',
+  
+  // Production - Vercel (your frontend domains)
+  'https://pet-registration.vercel.app',
+  'https://pet-registration-git-main.vercel.app',
+  
+  // Add any custom domains you have
+  // 'https://yourdomain.com',
+  // 'https://www.yourdomain.com',
+];
+
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-
-      if (
-        origin.includes("vercel.app") ||
-        origin === "http://localhost:3000"
-      ) {
+      // Allow requests with no origin (like mobile apps, Postman, server-to-server)
+      if (!origin) {
+        return callback(null, true);
+      }
+      
+      // Check if origin is allowed
+      if (allowedOrigins.indexOf(origin) !== -1) {
         callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
+      } 
+      // Also allow any vercel.app subdomain dynamically (for preview deployments)
+      else if (origin.match(/https:\/\/.*\.vercel\.app$/)) {
+        callback(null, true);
+      }
+      // Allow localhost with any port (for development flexibility)
+      else if (origin.match(/^http:\/\/localhost:\d+$/)) {
+        callback(null, true);
+      }
+      // Allow 127.0.0.1 with any port
+      else if (origin.match(/^http:\/\/127\.0\.0\.1:\d+$/)) {
+        callback(null, true);
+      }
+      else {
+        console.log(`CORS blocked origin: ${origin}`);
+        callback(new Error(`Not allowed by CORS: ${origin}`));
       }
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    maxAge: 86400, // 24 hours
   })
 );
-
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
