@@ -1,40 +1,68 @@
 const express = require('express');
-const jwt = require('jsonwebtoken');
 const Pet = require('../models/Pet');
+const RegistrationForm = require('../models/RegsitrationForm');
+const {auth} = require('../middleware/auth');
 const router = express.Router();
 
-// Middleware to verify JWT
-const auth = (req, res, next) => {
-  const token = req.header('Authorization')?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
-  
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (error) {
-    res.status(401).json({ message: 'Token is not valid' });
-  }
-};
-
-// Get user's pets
+// Get all pets
 router.get('/', auth, async (req, res) => {
   try {
-    const pets = await Pet.find({ owner: req.user.userId });
+    const pets = await Pet.find({ owner: req.user._id });
     res.json(pets);
   } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get single pet
+router.get('/:id', auth, async (req, res) => {
+  try {
+    const pet = await Pet.findOne({ _id: req.params.id, owner: req.user._id });
+    if (!pet) return res.status(404).json({ message: 'Pet not found' });
+    res.json(pet);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 
 // Create pet
 router.post('/', auth, async (req, res) => {
   try {
-    const pet = new Pet({ ...req.body, owner: req.user.userId });
+    const pet = new Pet({ ...req.body, owner: req.user._id });
     await pet.save();
     res.status(201).json(pet);
   } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Update pet
+router.put('/:id', auth, async (req, res) => {
+  try {
+    const pet = await Pet.findOneAndUpdate(
+      { _id: req.params.id, owner: req.user._id },
+      req.body,
+      { new: true }
+    );
+    if (!pet) return res.status(404).json({ message: 'Pet not found' });
+    res.json(pet);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Delete pet (also deletes registration)
+router.delete('/:id', auth, async (req, res) => {
+  try {
+    const pet = await Pet.findOneAndDelete({ _id: req.params.id, owner: req.user._id });
+    if (!pet) return res.status(404).json({ message: 'Pet not found' });
+    
+    // Delete associated registration
+    await RegistrationForm.findOneAndDelete({ pet: req.params.id });
+    
+    res.json({ message: 'Pet deleted' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 

@@ -19,7 +19,7 @@ const allowedOrigins = [
   'http://127.0.0.1:3000',
   'http://127.0.0.1:3001',
   'http://127.0.0.1:5173',
-  
+  'https://tailio-admin-frontend.vercel.app',
   // Production - Vercel (your frontend domains)
   'https://pet-registration.vercel.app',
   'https://pet-registration-git-main.vercel.app',
@@ -84,6 +84,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/pets', require('./routes/pets'));
 app.use('/api/registration-forms', require('./routes/registrationForms'),
 require('./routes/registrationForms'));
+app.use('/api/admin', require('./routes/admin/admin'));
 
 
 // 404 handler
