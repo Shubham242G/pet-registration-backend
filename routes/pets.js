@@ -1,7 +1,7 @@
 const express = require('express');
 const Pet = require('../models/Pet');
 const RegistrationForm = require('../models/RegsitrationForm');
-const {auth} = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 const router = express.Router();
 
 // Get all pets
@@ -28,10 +28,18 @@ router.get('/:id', auth, async (req, res) => {
 // Create pet
 router.post('/', auth, async (req, res) => {
   try {
-    const pet = new Pet({ ...req.body, owner: req.user._id });
+    const petData = {
+      ...req.body,
+      owner: req.user._id,
+      registrationStage: 0,
+      registrationStatus: 'not_started'
+    };
+    
+    const pet = new Pet(petData);
     await pet.save();
     res.status(201).json(pet);
   } catch (error) {
+    console.error('Create pet error:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -42,11 +50,12 @@ router.put('/:id', auth, async (req, res) => {
     const pet = await Pet.findOneAndUpdate(
       { _id: req.params.id, owner: req.user._id },
       req.body,
-      { new: true }
+      { new: true, runValidators: true }
     );
     if (!pet) return res.status(404).json({ message: 'Pet not found' });
     res.json(pet);
   } catch (error) {
+    console.error('Update pet error:', error);
     res.status(500).json({ message: error.message });
   }
 });

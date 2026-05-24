@@ -1,58 +1,64 @@
 const mongoose = require('mongoose');
 
-// Applicant Details Schema
-const applicantDetailsSchema = new mongoose.Schema({
-  firstName: { type: String, required: true },
-  middleName: { type: String },
-  lastName: { type: String, required: true },
-  dob: { type: String }
-});
-
-// Address Schema
-const addressSchema = new mongoose.Schema({
-  plot: { type: String, required: true },
-  street: { type: String },
-  pin: { type: String, required: true },
-  colony: { type: String, required: true },
-  ward: { type: String },
-  zone: { type: String },
-  mobile: { type: String, required: true },
-  email: { type: String, required: true }
-});
-
-// Dog Details Schema
-const dogDetailsSchema = new mongoose.Schema({
-  gender: { type: String, required: true },
-  photo: { type: String },
-  breed: { type: String },
-  ageYears: { type: String },
-  ageMonths: { type: String },
-  antiRabiesDate: { type: String },
-  vaccinationValidTill: { type: String },
-  certificateNumber: { type: String },
-  certificateDate: { type: String },
-  vetName: { type: String },
-  councilName: { type: String },
-  vetRegistrationNumber: { type: String },
-  vetMobile: { type: String }
-});
-
-// Documents Schema
-const documentsSchema = new mongoose.Schema({
-  antiRabiesCertificate: { type: String },
-  idProof: { type: String },
-  residenceProof: { type: String },
-  ownerWithPetPhoto: { type: String }
+// Document status schema with Base64
+const documentStatusSchema = new mongoose.Schema({
+  documentName: { 
+    type: String, 
+    enum: ['antiRabiesCertificate', 'idProof', 'residenceProof', 'ownerWithPetPhoto'],
+    required: true 
+  },
+  fileData: { type: String, required: true }, // Base64 data
+  fileName: { type: String, required: true },
+  fileSize: { type: Number, required: true },
+  mimeType: { type: String, required: true },
+  uploadedAt: { type: Date, default: Date.now }
 });
 
 // Main Registration Form Schema
 const registrationFormSchema = new mongoose.Schema({
-  pet: { type: mongoose.Schema.Types.ObjectId, ref: 'Pet', required: true },
-  applicantDetails: applicantDetailsSchema,
-  address: addressSchema,
-  dogDetails: dogDetailsSchema,
-  documents: documentsSchema,
-  isFilled: { type: Boolean, default: false }
+  pet: { type: mongoose.Schema.Types.ObjectId, ref: 'Pet', required: true, unique: true },
+  documents: [documentStatusSchema],
+  registrationTriggered: { type: Boolean, default: false },
+  registrationTriggeredAt: { type: Date },
+  isComplete: { type: Boolean, default: false }
 }, { timestamps: true });
+
+// Virtuals
+registrationFormSchema.virtual('uploadedDocumentsCount').get(function() {
+  return this.documents.length;
+});
+
+registrationFormSchema.virtual('hasAllDocuments').get(function() {
+  return this.documents.length === 4;
+});
+
+registrationFormSchema.virtual('missingDocuments').get(function() {
+  const requiredDocs = ['antiRabiesCertificate', 'idProof', 'residenceProof', 'ownerWithPetPhoto'];
+  const uploadedDocNames = this.documents.map(doc => doc.documentName);
+  return requiredDocs.filter(doc => !uploadedDocNames.includes(doc));
+});
+
+// Method to trigger registration
+registrationFormSchema.methods.triggerRegistration = async function() {
+  if (this.documents.length === 4 && !this.registrationTriggered) {
+    this.registrationTriggered = true;
+    this.registrationTriggeredAt = new Date();
+    this.isComplete = true;
+    await this.save();
+    
+    // Update pet's registration stage
+    const Pet = mongoose.model('Pet');
+    await Pet.findByIdAndUpdate(this.pet, {
+      registrationStage: 2,
+      registrationStatus: 'form_submitted'
+    });
+    
+    return true;
+  }
+  return false;
+};
+
+registrationFormSchema.set('toJSON', { virtuals: true });
+registrationFormSchema.set('toObject', { virtuals: true });
 
 module.exports = mongoose.model('RegistrationForm', registrationFormSchema);
