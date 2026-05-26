@@ -124,6 +124,8 @@ const allowedOrigins = [
   'https://tailio-admin-frontend.vercel.app',
   'https://pet-registration.vercel.app',
   'https://pet-registration-git-main.vercel.app',
+  'https://www.tailio.in',
+  'https://tailio.in'
 ];
 
 app.use(
