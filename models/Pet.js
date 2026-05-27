@@ -115,7 +115,16 @@ const petSchema = new mongoose.Schema({
     type: String,
     enum: ['not_started', 'documents_uploaded', 'form_submitted', 'awaiting_license', 'license_delivered'],
     default: 'not_started'
-  }
+  },
+  paymentStatus: { 
+  type: String, 
+  enum: ['pending', 'completed', 'failed'], 
+  default: 'pending' 
+},
+paymentId: { type: String },
+paymentOrderId: { type: String },
+paymentAmount: { type: Number },
+paymentDate: { type: Date },
 }, { timestamps: true });
 
 // Virtual for full age display

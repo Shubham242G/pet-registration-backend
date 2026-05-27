@@ -20,7 +20,10 @@ const registrationFormSchema = new mongoose.Schema({
   documents: [documentStatusSchema],
   registrationTriggered: { type: Boolean, default: false },
   registrationTriggeredAt: { type: Date },
-  isComplete: { type: Boolean, default: false }
+  isComplete: { type: Boolean, default: false },
+  paymentStatus: { type: String, enum: ['pending', 'completed', 'failed'], default: 'pending' },
+  paymentId: { type: String },
+  paymentOrderId: { type: String }
 }, { timestamps: true });
 
 // Virtuals
@@ -38,9 +41,10 @@ registrationFormSchema.virtual('missingDocuments').get(function() {
   return requiredDocs.filter(doc => !uploadedDocNames.includes(doc));
 });
 
-// Method to trigger registration
-registrationFormSchema.methods.triggerRegistration = async function() {
-  if (this.documents.length === 4 && !this.registrationTriggered) {
+// Method to trigger registration - NOW REQUIRES PAYMENT VERIFICATION
+registrationFormSchema.methods.triggerRegistration = async function(verifyPayment = false) {
+  // Only allow trigger if all documents are uploaded, NOT already triggered, AND payment is verified
+  if (this.documents.length === 4 && !this.registrationTriggered && verifyPayment) {
     this.registrationTriggered = true;
     this.registrationTriggeredAt = new Date();
     this.isComplete = true;

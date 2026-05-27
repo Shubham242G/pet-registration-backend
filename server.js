@@ -179,7 +179,8 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/pets', require('./routes/pets'));
 app.use('/api/registration', require('./routes/registrationForms'));
 app.use('/api/admin', require('./routes/admin/admin'));
-
+app.use('/api/whatsapp-auth', require('./routes/whatsappAuth'));
+app.use('/api/payment', require('./routes/payment'));
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ message: 'Route not found' });

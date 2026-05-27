@@ -4,6 +4,11 @@ const RegistrationForm = require('../models/RegsitrationForm');
 const { auth } = require('../middleware/auth');
 const router = express.Router();
 
+router.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  next();
+});
+
 // Get all pets
 router.get('/', auth, async (req, res) => {
   try {

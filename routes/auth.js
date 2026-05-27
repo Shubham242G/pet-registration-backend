@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const router = express.Router();
 
+// Register with Email (traditional)
 router.post('/register', async (req, res) => {
   try {
     console.log('Register attempt - Body:', req.body);
@@ -33,12 +34,13 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'Username already taken' });
     }
     
-    // Create user with both username and name fields
+    // Create user (whatsappNumber is NOT required for email registration)
     const user = new User({ 
       email, 
       password, 
       username: userName,
-      name: userName
+      name: userName,
+      whatsappNumber: null // Email-only users won't have WhatsApp initially
     });
     await user.save();
     
@@ -84,8 +86,9 @@ router.get('/verify', async (req, res) => {
         email: user.email,
         username: user.username || user.name,
         name: user.name || user.username,
-        role: user.role
-      }
+        role: user.role,
+        whatsappNumber: user.whatsappNumber
+      } 
     });
   } catch (error) {
     res.status(401).json({ valid: false, message: 'Token invalid or expired' });
@@ -97,12 +100,25 @@ router.post('/login', async (req, res) => {
     console.log('Login attempt:', req.body.email);
     const { email, password } = req.body;
     
-    // Allow login with email OR username
+    // Allow login with email, username, OR whatsappNumber
     const user = await User.findOne({ 
-      $or: [{ email: email }, { username: email }] 
+      $or: [
+        { email: email }, 
+        { username: email },
+        { whatsappNumber: email } // Allow login with WhatsApp number
+      ] 
     });
     
-    if (!user || !(await user.comparePassword(password))) {
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+    
+    // If user doesn't have a password (WhatsApp-only user), don't allow email login
+    if (!user.password) {
+      return res.status(401).json({ message: 'This account uses WhatsApp login. Please use WhatsApp to sign in.' });
+    }
+    
+    if (!(await user.comparePassword(password))) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
     
@@ -115,11 +131,45 @@ router.post('/login', async (req, res) => {
         email: user.email, 
         username: user.username,
         name: user.name || user.username,
-        role: user.role 
+        role: user.role,
+        whatsappNumber: user.whatsappNumber
       } 
     });
   } catch (error) {
     console.error('Login error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Add a route to link WhatsApp number to existing email account
+router.post('/link-whatsapp', async (req, res) => {
+  try {
+    const { userId, whatsappNumber } = req.body;
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    // Check if WhatsApp number is already used
+    const existingUser = await User.findOne({ whatsappNumber });
+    if (existingUser && existingUser._id.toString() !== decoded.userId) {
+      return res.status(400).json({ message: 'WhatsApp number already registered' });
+    }
+    
+    const user = await User.findById(decoded.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    user.whatsappNumber = whatsappNumber;
+    await user.save();
+    
+    res.json({ success: true, message: 'WhatsApp number linked successfully' });
+  } catch (error) {
+    console.error('Link WhatsApp error:', error);
     res.status(500).json({ message: error.message });
   }
 });

@@ -44,6 +44,7 @@ router.get('/:petId/status', auth, async (req, res) => {
       registrationTriggeredAt: form.registrationTriggeredAt,
       isComplete: form.isComplete,
       documents: form.documents,
+      paymentStatus: form.paymentStatus || 'pending',
       createdAt: form.createdAt,
       updatedAt: form.updatedAt
     });
@@ -53,7 +54,7 @@ router.get('/:petId/status', auth, async (req, res) => {
   }
 });
 
-// UPLOAD a single document (Base64)
+// UPLOAD a single document (Base64) - NO AUTO-TRIGGER
 router.post('/:petId/documents', auth, async (req, res) => {
   try {
     const pet = await Pet.findOne({ 
@@ -103,20 +104,17 @@ router.post('/:petId/documents', auth, async (req, res) => {
 
     await form.save();
 
-    // Update pet's registration stage if all documents are uploaded
-    let registrationTriggered = false;
+    // 🔥 IMPORTANT: NO AUTO-TRIGGER - Payment must happen first via frontend
+    // Just update pet stage to show documents are ready
     if (form.hasAllDocuments && !form.registrationTriggered) {
-      registrationTriggered = await form.triggerRegistration();
-      if (registrationTriggered) {
-        await Pet.findByIdAndUpdate(pet._id, {
-          registrationStage: 1,
-          registrationStatus: 'documents_uploaded'
-        });
-      }
+      await Pet.findByIdAndUpdate(pet._id, {
+        registrationStage: 1,
+        registrationStatus: 'documents_uploaded'
+      });
     }
 
     res.json({
-      message: registrationTriggered ? 'All documents uploaded! Registration process triggered successfully.' : 'Document uploaded successfully',
+      message: 'Document uploaded successfully',
       document: newDocument,
       uploadedDocumentsCount: form.uploadedDocumentsCount,
       hasAllDocuments: form.hasAllDocuments,
@@ -182,9 +180,11 @@ router.delete('/:petId/documents/:documentName', auth, async (req, res) => {
   }
 });
 
-// TRIGGER registration process manually
+// TRIGGER registration process manually - REQUIRES PAYMENT VERIFICATION
 router.post('/:petId/trigger-registration', auth, async (req, res) => {
   try {
+    const { paymentVerified } = req.body; // Must come from frontend after payment
+    
     const pet = await Pet.findOne({ 
       _id: req.params.petId, 
       owner: req.user._id 
@@ -210,7 +210,12 @@ router.post('/:petId/trigger-registration', auth, async (req, res) => {
       return res.status(400).json({ message: 'Registration already triggered for this pet' });
     }
 
-    const triggered = await form.triggerRegistration();
+    // 🔥 REQUIRE PAYMENT VERIFICATION
+    if (!paymentVerified) {
+      return res.status(402).json({ message: 'Payment required to complete registration. Please pay ₹999 first.' });
+    }
+
+    const triggered = await form.triggerRegistration(true); // Pass true for payment verification
     
     if (triggered) {
       await Pet.findByIdAndUpdate(pet._id, {
