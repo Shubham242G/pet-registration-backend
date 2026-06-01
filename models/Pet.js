@@ -32,7 +32,7 @@ const petSchema = new mongoose.Schema({
     number: { type: String },
     issuedAt: { type: Date },
     expiresAt: { type: Date },
-    fileData: { type: String }, // Base64 PDF
+    fileData: { type: String },
     issuedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     issuedOn: { type: Date, default: Date.now },
   },
@@ -47,22 +47,28 @@ const petSchema = new mongoose.Schema({
     default: 0,
   },
 
-  // FIX: Added 'payment_completed' to enum.
-  // Previously, verify-payment.js was writing 'payment_completed' and
-  // 'payment_completed_documents_pending' which weren't in this enum,
-  // so Mongoose was silently ignoring those updates and the status never changed.
   registrationStatus: {
     type: String,
     enum: [
       'not_started',
       'documents_uploaded',
-      'payment_completed',   // ← ADDED: set after Razorpay payment verified
+      'payment_completed',
       'form_submitted',
       'awaiting_license',
       'license_delivered',
     ],
     default: 'not_started',
   },
+
+  // ─── CACHED FIELDS from RegistrationForm ────────────────────────────────────
+  // These mirror values from the RegistrationForm collection so the dashboard
+  // only needs GET /pets (1 call) instead of GET /pets + N status calls.
+  // They are written by registration.js whenever documents are uploaded/deleted
+  // or registration is triggered. Read by Dashboard.tsx directly from pet object.
+  uploadedDocumentsCount: { type: Number, default: 0 },   // mirrors form.documents.length
+  hasAllDocuments:        { type: Boolean, default: false }, // mirrors form.hasAllDocuments
+  registrationTriggered:  { type: Boolean, default: false }, // mirrors form.registrationTriggered
+  // ─────────────────────────────────────────────────────────────────────────────
 
   // Payment Fields
   paymentStatus: {
@@ -89,7 +95,6 @@ petSchema.virtual('fullAge').get(function () {
   return 'Unknown';
 });
 
-// Virtual for registration progress percentage
 petSchema.virtual('registrationProgress').get(function () {
   return (this.registrationStage / 4) * 100;
 });

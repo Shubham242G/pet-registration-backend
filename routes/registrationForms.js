@@ -29,6 +29,7 @@ router.get('/:petId/status', auth, async (req, res) => {
         registrationTriggered: false,
         isComplete: false,
         documents: [],
+        petRegistrationStatus: pet.registrationStatus,   // ← ADD
         message: 'No registration found. Please upload documents to start.'
       });
     }
@@ -45,6 +46,7 @@ router.get('/:petId/status', auth, async (req, res) => {
       isComplete: form.isComplete,
       documents: form.documents,
       paymentStatus: form.paymentStatus || 'pending',
+      petRegistrationStatus: pet.registrationStatus,     // ← ADD
       createdAt: form.createdAt,
       updatedAt: form.updatedAt
     });
@@ -77,25 +79,22 @@ router.post('/:petId/documents', auth, async (req, res) => {
       return res.status(400).json({ message: 'No file data provided' });
     }
 
-    // Find or create registration form
     let form = await RegistrationForm.findOne({ pet: req.params.petId });
     if (!form) {
       form = new RegistrationForm({ pet: req.params.petId, documents: [] });
     }
 
-    // Check if document already exists
     const existingDocIndex = form.documents.findIndex(doc => doc.documentName === documentName);
     
     const newDocument = {
-      documentName: documentName,
-      fileData: fileData,
-      fileName: fileName,
-      fileSize: fileSize,
-      mimeType: mimeType,
+      documentName,
+      fileData,
+      fileName,
+      fileSize,
+      mimeType,
       uploadedAt: new Date()
     };
 
-    // Update or add document
     if (existingDocIndex !== -1) {
       form.documents[existingDocIndex] = newDocument;
     } else {
@@ -104,14 +103,21 @@ router.post('/:petId/documents', auth, async (req, res) => {
 
     await form.save();
 
-    // 🔥 IMPORTANT: NO AUTO-TRIGGER - Payment must happen first via frontend
-    // Just update pet stage to show documents are ready
+    // ─── CACHE WRITE: mirror doc count onto Pet so dashboard needs 0 extra calls ───
+    // Always keep uploadedDocumentsCount in sync on the Pet document itself.
+    // This means GET /pets returns everything the dashboard needs — no status calls.
+    const petUpdate = {
+      uploadedDocumentsCount: form.documents.length,   // ← CACHE: always sync
+      hasAllDocuments: form.hasAllDocuments,            // ← CACHE: always sync
+    };
+
     if (form.hasAllDocuments && !form.registrationTriggered) {
-      await Pet.findByIdAndUpdate(pet._id, {
-        registrationStage: 1,
-        registrationStatus: 'documents_uploaded'
-      });
+      petUpdate.registrationStage = 1;
+      petUpdate.registrationStatus = 'documents_uploaded';
     }
+
+    await Pet.findByIdAndUpdate(pet._id, petUpdate);
+    // ─────────────────────────────────────────────────────────────────────────────
 
     res.json({
       message: 'Document uploaded successfully',
@@ -153,19 +159,24 @@ router.delete('/:petId/documents/:documentName', auth, async (req, res) => {
 
     form.documents.splice(documentIndex, 1);
     
-    // Reset registration triggered status if documents are incomplete
     if (form.registrationTriggered && form.documents.length < 4) {
       form.registrationTriggered = false;
       form.registrationTriggeredAt = null;
       form.isComplete = false;
-      
-      await Pet.findByIdAndUpdate(pet._id, {
-        registrationStage: 0,
-        registrationStatus: 'not_started'
-      });
     }
     
     await form.save();
+
+    // ─── CACHE WRITE: sync count back down on delete too ───
+    await Pet.findByIdAndUpdate(pet._id, {
+      uploadedDocumentsCount: form.documents.length,
+      hasAllDocuments: form.hasAllDocuments,
+      ...(form.documents.length < 4 && {
+        registrationStage: 0,
+        registrationStatus: 'not_started',
+      }),
+    });
+    // ───────────────────────────────────────────────────────
 
     res.json({
       message: 'Document deleted successfully',
@@ -183,7 +194,7 @@ router.delete('/:petId/documents/:documentName', auth, async (req, res) => {
 // TRIGGER registration process manually - REQUIRES PAYMENT VERIFICATION
 router.post('/:petId/trigger-registration', auth, async (req, res) => {
   try {
-    const { paymentVerified } = req.body; // Must come from frontend after payment
+    const { paymentVerified } = req.body;
     
     const pet = await Pet.findOne({ 
       _id: req.params.petId, 
@@ -210,17 +221,17 @@ router.post('/:petId/trigger-registration', auth, async (req, res) => {
       return res.status(400).json({ message: 'Registration already triggered for this pet' });
     }
 
-    // 🔥 REQUIRE PAYMENT VERIFICATION
     if (!paymentVerified) {
       return res.status(402).json({ message: 'Payment required to complete registration. Please pay ₹999 first.' });
     }
 
-    const triggered = await form.triggerRegistration(true); // Pass true for payment verification
+    const triggered = await form.triggerRegistration(true);
     
     if (triggered) {
       await Pet.findByIdAndUpdate(pet._id, {
         registrationStage: 2,
-        registrationStatus: 'form_submitted'
+        registrationStatus: 'form_submitted',
+        registrationTriggered: true,   // ← CACHE: so /pets shows correct state
       });
       
       res.json({
@@ -238,7 +249,7 @@ router.post('/:petId/trigger-registration', auth, async (req, res) => {
   }
 });
 
-// GET all pets with registration status
+// GET all pets with registration status — used by dashboard for single-call load
 router.get('/user/all-status', auth, async (req, res) => {
   try {
     const pets = await Pet.find({ owner: req.user._id });
