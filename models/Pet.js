@@ -5,27 +5,27 @@ const petSchema = new mongoose.Schema({
   name: { type: String, required: true, maxlength: 50 },
   species: { type: String, required: true, default: 'dog' },
 
-  // Dog Details
-  breed: { type: String, required: true },
+  // Dog Details (Breed REMOVED)
   ageYears: { type: Number, required: true },
   ageMonths: { type: Number, required: true },
 
   // Photograph
   profilePicture: { type: String },
-  photoWithOwner: { type: String },
 
   // Vaccination Details
   vaccinationCertificateNumber: { type: String, required: true, maxlength: 50 },
   vaccinationDate: { type: Date, required: true },
-  vaccinationValidTill: { type: Date },
+  // vaccinationValidTill REMOVED
 
   // Veterinary Doctor Details
   vetName: { type: String, required: true, maxlength: 50 },
   vetMobile: { type: String, required: true, maxlength: 10 },
+  vetRegistrationNumber: { type: String, required: true, maxlength: 50 },
+  vetCouncilName: { type: String, required: true, maxlength: 100 },
 
   // Additional Fields
   gender: { type: String, enum: ['male', 'female', 'unknown'], default: 'unknown' },
-  color: String,
+  // color REMOVED
 
   // License Information
   license: {
@@ -60,15 +60,10 @@ const petSchema = new mongoose.Schema({
     default: 'not_started',
   },
 
-  // ─── CACHED FIELDS from RegistrationForm ────────────────────────────────────
-  // These mirror values from the RegistrationForm collection so the dashboard
-  // only needs GET /pets (1 call) instead of GET /pets + N status calls.
-  // They are written by registration.js whenever documents are uploaded/deleted
-  // or registration is triggered. Read by Dashboard.tsx directly from pet object.
-  uploadedDocumentsCount: { type: Number, default: 0 },   // mirrors form.documents.length
-  hasAllDocuments:        { type: Boolean, default: false }, // mirrors form.hasAllDocuments
-  registrationTriggered:  { type: Boolean, default: false }, // mirrors form.registrationTriggered
-  // ─────────────────────────────────────────────────────────────────────────────
+  // Cached fields from RegistrationForm
+  uploadedDocumentsCount: { type: Number, default: 0 },
+  hasAllDocuments: { type: Boolean, default: false },
+  registrationTriggered: { type: Boolean, default: false },
 
   // Payment Fields
   paymentStatus: {
