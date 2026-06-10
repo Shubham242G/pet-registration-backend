@@ -14,6 +14,18 @@ const userSchema = new mongoose.Schema({
   name: { type: String },
   mobile: { type: String }, // Alternative number if different from WhatsApp
   
+  // NEW: City for pricing
+  city: { 
+    type: String, 
+    enum: ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad', 'other'],
+    default: 'other'
+  },
+  pricingTier: { 
+    type: String, 
+    enum: ['ghaziabad', 'standard'], 
+    default: 'standard' 
+  },
+  
   // Role and permissions
   role: { type: String, enum: ['user', 'salesman', 'admin'], default: 'user' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -27,6 +39,11 @@ const userSchema = new mongoose.Schema({
   // WhatsApp specific
   whatsappOptIn: { type: Boolean, default: true }
 }, { timestamps: true });
+
+// Virtual for registration fee
+userSchema.virtual('registrationFee').get(function() {
+  return this.city === 'ghaziabad' ? 1499 : 999;
+});
 
 // Auto-hash password if provided
 userSchema.pre('save', async function () {

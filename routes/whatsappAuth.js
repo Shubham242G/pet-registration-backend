@@ -1,4 +1,3 @@
-// backend/routes/whatsappAuth.js
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
@@ -41,16 +40,12 @@ router.post('/send-otp', async (req, res) => {
     
     const result = await sendOTPviaWhatsApp(cleanedNumber, otpCode);
     
-    // Check if WhatsApp API was successful
-    // The API returns { status: 200, error: false } on success
     if (result.success && result.data && !result.data.error) {
-      // Success - OTP sent
       return res.json({ 
         success: true, 
         message: 'OTP sent to your WhatsApp' 
       });
     } else {
-      // Failed to send
       console.error('WhatsApp send failed:', result.error);
       return res.status(500).json({ error: 'Failed to send OTP. Please try again.' });
     }
@@ -68,7 +63,6 @@ router.post('/verify-otp', async (req, res) => {
     
     const cleanedNumber = formatPhoneNumber(whatsappNumber);
     
-    // Find valid OTP
     const otpRecord = await OTP.findOne({
       whatsappNumber: cleanedNumber,
       otpCode,
@@ -80,11 +74,9 @@ router.post('/verify-otp', async (req, res) => {
       return res.status(400).json({ error: 'Invalid or expired OTP' });
     }
     
-    // Check if user exists
     let user = await User.findOne({ whatsappNumber: cleanedNumber });
     
     if (user) {
-      // Existing user - login successful
       otpRecord.isUsed = true;
       await otpRecord.save();
       
@@ -107,16 +99,17 @@ router.post('/verify-otp', async (req, res) => {
           email: user.email,
           username: user.username || user.name,
           name: user.name,
-          role: user.role
+          role: user.role,
+          city: user.city || 'other',
+          pricingTier: user.pricingTier || 'standard',
+          registrationFee: user.city === 'ghaziabad' ? 1499 : 999
         }
       });
     }
     
-    // New user - mark OTP as verified and ask for additional info
     otpRecord.isUsed = true;
     await otpRecord.save();
     
-    // Generate a temporary token for registration completion
     const tempToken = jwt.sign(
       { whatsappNumber: cleanedNumber, temp: true },
       process.env.JWT_SECRET,
@@ -137,16 +130,15 @@ router.post('/verify-otp', async (req, res) => {
   }
 });
 
-// STEP 3: Complete registration
+// STEP 3: Complete registration - UPDATED to include city
 router.post('/complete-registration', async (req, res) => {
   try {
-    const { tempToken, name, username } = req.body;
+    const { tempToken, name, username, city } = req.body;
     
     if (!tempToken || !name) {
       return res.status(400).json({ error: 'Name and valid session are required' });
     }
     
-    // Verify temp token
     let decoded;
     try {
       decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
@@ -160,13 +152,11 @@ router.post('/complete-registration', async (req, res) => {
     
     const { whatsappNumber } = decoded;
     
-    // Check if user already exists
     let user = await User.findOne({ whatsappNumber });
     if (user) {
       return res.status(400).json({ error: 'User already exists. Please login.' });
     }
     
-    // Check if username already exists (if provided)
     if (username) {
       const usernameExists = await User.findOne({ username });
       if (usernameExists) {
@@ -174,18 +164,22 @@ router.post('/complete-registration', async (req, res) => {
       }
     }
     
-    // Create new user
+    // Determine pricing tier based on city
+    const selectedCity = city || 'other';
+    const pricingTier = selectedCity === 'ghaziabad' ? 'ghaziabad' : 'standard';
+    
     user = new User({
       whatsappNumber,
       name: name,
       username: username || name.toLowerCase().replace(/\s/g, '') + Math.floor(Math.random() * 1000),
       isVerified: true,
-      lastLoginAt: new Date()
+      lastLoginAt: new Date(),
+      city: selectedCity,
+      pricingTier: pricingTier
     });
     
     await user.save();
     
-    // Generate final JWT
     const token = jwt.sign(
       { userId: user._id, role: user.role },
       process.env.JWT_SECRET,
@@ -201,7 +195,10 @@ router.post('/complete-registration', async (req, res) => {
         email: user.email,
         username: user.username,
         name: user.name,
-        role: user.role
+        role: user.role,
+        city: user.city,
+        pricingTier: user.pricingTier,
+        registrationFee: user.city === 'ghaziabad' ? 1499 : 999
       }
     });
     
@@ -221,10 +218,8 @@ router.post('/resend-otp', async (req, res) => {
       return res.status(400).json({ error: 'Valid 10-digit number required' });
     }
     
-    // Delete old OTPs
     await OTP.deleteMany({ whatsappNumber: cleanedNumber });
     
-    // Generate new OTP
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     
     await OTP.create({

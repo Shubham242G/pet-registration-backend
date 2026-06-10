@@ -3,11 +3,11 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const router = express.Router();
 
-// Register with Email (traditional)
+// Register with WhatsApp (updated to include city)
 router.post('/register', async (req, res) => {
   try {
     console.log('Register attempt - Body:', req.body);
-    const { email, password, username, name } = req.body;
+    const { email, password, username, name, city } = req.body;
     
     // Use username from frontend, fallback to name
     const userName = username || name;
@@ -20,6 +20,9 @@ router.post('/register', async (req, res) => {
     }
     if (!password) {
       return res.status(400).json({ message: 'Password is required' });
+    }
+    if (!city) {
+      return res.status(400).json({ message: 'Please select your city' });
     }
     
     // Check if email already exists
@@ -34,13 +37,18 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'Username already taken' });
     }
     
-    // Create user (whatsappNumber is NOT required for email registration)
+    // Determine pricing tier based on city
+    const pricingTier = city === 'ghaziabad' ? 'ghaziabad' : 'standard';
+    
+    // Create user with city
     const user = new User({ 
       email, 
       password, 
       username: userName,
       name: userName,
-      whatsappNumber: null // Email-only users won't have WhatsApp initially
+      whatsappNumber: null,
+      city: city,
+      pricingTier: pricingTier
     });
     await user.save();
     
@@ -55,7 +63,10 @@ router.post('/register', async (req, res) => {
         email, 
         username: userName,
         name: userName,
-        role: user.role 
+        role: user.role,
+        city: user.city,
+        pricingTier: user.pricingTier,
+        registrationFee: user.registrationFee
       } 
     });
   } catch (error) {
@@ -87,7 +98,10 @@ router.get('/verify', async (req, res) => {
         username: user.username || user.name,
         name: user.name || user.username,
         role: user.role,
-        whatsappNumber: user.whatsappNumber
+        whatsappNumber: user.whatsappNumber,
+        city: user.city || 'other',
+        pricingTier: user.pricingTier || 'standard',
+        registrationFee: user.city === 'ghaziabad' ? 1499 : 999
       } 
     });
   } catch (error) {
@@ -105,7 +119,7 @@ router.post('/login', async (req, res) => {
       $or: [
         { email: email }, 
         { username: email },
-        { whatsappNumber: email } // Allow login with WhatsApp number
+        { whatsappNumber: email }
       ] 
     });
     
@@ -132,7 +146,10 @@ router.post('/login', async (req, res) => {
         username: user.username,
         name: user.name || user.username,
         role: user.role,
-        whatsappNumber: user.whatsappNumber
+        whatsappNumber: user.whatsappNumber,
+        city: user.city || 'other',
+        pricingTier: user.pricingTier || 'standard',
+        registrationFee: user.city === 'ghaziabad' ? 1499 : 999
       } 
     });
   } catch (error) {
