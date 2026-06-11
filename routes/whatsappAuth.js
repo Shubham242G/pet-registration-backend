@@ -89,6 +89,14 @@ router.post('/verify-otp', async (req, res) => {
         { expiresIn: '7d' }
       );
       
+      // Calculate registration fee based on city (correct prices)
+      let userRegistrationFee = 942.82; // default
+      if (user.city === 'ghaziabad') {
+        userRegistrationFee = 1532.82;
+      } else if (user.city && ['delhi', 'noida', 'gurgaon'].includes(user.city)) {
+        userRegistrationFee = 942.82;
+      }
+      
       return res.json({
         success: true,
         requiresRegistration: false,
@@ -102,7 +110,7 @@ router.post('/verify-otp', async (req, res) => {
           role: user.role,
           city: user.city || 'other',
           pricingTier: user.pricingTier || 'standard',
-          registrationFee: user.city === 'ghaziabad' ? 1499 : 999
+          registrationFee: userRegistrationFee
         }
       });
     }
@@ -130,10 +138,10 @@ router.post('/verify-otp', async (req, res) => {
   }
 });
 
-// STEP 3: Complete registration - UPDATED to include city
+// STEP 3: Complete registration
 router.post('/complete-registration', async (req, res) => {
   try {
-    const { tempToken, name, username, city } = req.body;
+    const { tempToken, name, username, city, registrationFee } = req.body;
     
     if (!tempToken || !name) {
       return res.status(400).json({ error: 'Name and valid session are required' });
@@ -168,6 +176,18 @@ router.post('/complete-registration', async (req, res) => {
     const selectedCity = city || 'other';
     const pricingTier = selectedCity === 'ghaziabad' ? 'ghaziabad' : 'standard';
     
+    // Calculate registration fee based on city (correct prices)
+    let finalRegistrationFee = registrationFee;
+    if (!finalRegistrationFee) {
+      if (selectedCity === 'ghaziabad') {
+        finalRegistrationFee = 1532.82;
+      } else if (['delhi', 'noida', 'gurgaon'].includes(selectedCity)) {
+        finalRegistrationFee = 942.82;
+      } else {
+        finalRegistrationFee = 942.82; // default
+      }
+    }
+    
     user = new User({
       whatsappNumber,
       name: name,
@@ -175,7 +195,8 @@ router.post('/complete-registration', async (req, res) => {
       isVerified: true,
       lastLoginAt: new Date(),
       city: selectedCity,
-      pricingTier: pricingTier
+      pricingTier: pricingTier,
+      registrationFee: finalRegistrationFee
     });
     
     await user.save();
@@ -198,7 +219,7 @@ router.post('/complete-registration', async (req, res) => {
         role: user.role,
         city: user.city,
         pricingTier: user.pricingTier,
-        registrationFee: user.city === 'ghaziabad' ? 1499 : 999
+        registrationFee: finalRegistrationFee
       }
     });
     

@@ -26,6 +26,9 @@ const userSchema = new mongoose.Schema({
     default: 'standard' 
   },
   
+  // NEW: Store the actual registration fee
+  registrationFee: { type: Number, default: 999 },
+  
   // Role and permissions
   role: { type: String, enum: ['user', 'salesman', 'admin'], default: 'user' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -40,8 +43,8 @@ const userSchema = new mongoose.Schema({
   whatsappOptIn: { type: Boolean, default: true }
 }, { timestamps: true });
 
-// Virtual for registration fee
-userSchema.virtual('registrationFee').get(function() {
+// Virtual for registration fee (fallback if not stored)
+userSchema.virtual('calculatedRegistrationFee').get(function() {
   return this.city === 'ghaziabad' ? 1499 : 999;
 });
 

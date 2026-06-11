@@ -1,144 +1,261 @@
 const express = require('express');
-const Razorpay = require('razorpay');
-const crypto = require('crypto');
-const { auth } = require('../middleware/auth');
-const Pet = require('../models/Pet');
-const RegistrationForm = require('../models/RegsitrationForm');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+const OTP = require('../models/OTP');
+const { sendOTPviaWhatsApp } = require('../servcies/whatsappService');
 const router = express.Router();
 
-// Initialize Razorpay
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+// Helper to format phone number
+const formatPhoneNumber = (number) => {
+  const cleaned = number.toString().replace(/\D/g, '');
+  if (cleaned.length === 10) return cleaned;
+  if (cleaned.length === 12 && cleaned.startsWith('91')) return cleaned.substring(2);
+  return cleaned;
+};
 
-// Create order
-router.post('/create-order', auth, async (req, res) => {
+// STEP 1: Send OTP for login/registration
+router.post('/send-otp', async (req, res) => {
   try {
-    const { amount, petId, petName } = req.body;
-
-    const shortPetId = petId.slice(-8);
-    const shortTimestamp = Date.now().toString().slice(-8);
-    const receipt = `pet_${shortPetId}_${shortTimestamp}`;
-
-    const options = {
-      amount: amount * 100,
-      currency: 'INR',
-      receipt: receipt,
-      notes: {
-        petId: petId,
-        petName: petName,
-        userId: req.user._id.toString(),
-      },
-    };
-
-    const order = await razorpay.orders.create(options);
-
-    res.json({
-      success: true,
-      orderId: order.id,
-      amount: order.amount,
-      currency: order.currency,
+    const { whatsappNumber } = req.body;
+    
+    if (!whatsappNumber) {
+      return res.status(400).json({ error: 'WhatsApp number is required' });
+    }
+    
+    const cleanedNumber = formatPhoneNumber(whatsappNumber);
+    
+    if (cleanedNumber.length !== 10) {
+      return res.status(400).json({ error: 'Please enter a valid 10-digit mobile number' });
+    }
+    
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    await OTP.deleteMany({ whatsappNumber: cleanedNumber });
+    
+    await OTP.create({
+      whatsappNumber: cleanedNumber,
+      otpCode,
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000)
     });
+    
+    const result = await sendOTPviaWhatsApp(cleanedNumber, otpCode);
+    
+    if (result.success && result.data && !result.data.error) {
+      return res.json({ 
+        success: true, 
+        message: 'OTP sent to your WhatsApp' 
+      });
+    } else {
+      console.error('WhatsApp send failed:', result.error);
+      return res.status(500).json({ error: 'Failed to send OTP. Please try again.' });
+    }
+    
   } catch (error) {
-    console.error('Create order error:', error);
-    res.status(500).json({ error: 'Failed to create order' });
+    console.error('Send OTP error:', error);
+    res.status(500).json({ error: 'Failed to send OTP' });
   }
 });
 
-// Verify payment
-router.post('/verify-payment', auth, async (req, res) => {
+// STEP 2: Verify OTP
+router.post('/verify-otp', async (req, res) => {
   try {
-    const {
-      razorpay_order_id,
-      razorpay_payment_id,
-      razorpay_signature,
-      petId,
-      amount,
-    } = req.body;
-
-    // Verify Razorpay signature — this is the real security check
-    const secret = process.env.RAZORPAY_KEY_SECRET;
-    const hmac = crypto.createHmac('sha256', secret);
-    hmac.update(`${razorpay_order_id}|${razorpay_payment_id}`);
-    const generatedSignature = hmac.digest('hex');
-
-    if (generatedSignature !== razorpay_signature) {
-      return res.status(400).json({ error: 'Invalid signature' });
-    }
-
-    // FIX: Set registrationStatus to 'payment_completed' (valid enum value).
-    // Also removed isRegistered:true — that should only be set by admin, not here.
-    await Pet.findByIdAndUpdate(petId, {
-      paymentStatus: 'completed',
-      paymentId: razorpay_payment_id,
-      paymentOrderId: razorpay_order_id,
-      paymentAmount: amount,
-      paymentDate: new Date(),
-      registrationStage: 1,
-      registrationStatus: 'payment_completed', // valid enum, was previously causing silent failures
+    const { whatsappNumber, otpCode } = req.body;
+    
+    const cleanedNumber = formatPhoneNumber(whatsappNumber);
+    
+    const otpRecord = await OTP.findOne({
+      whatsappNumber: cleanedNumber,
+      otpCode,
+      isUsed: false,
+      expiresAt: { $gt: new Date() }
     });
-
-    // Update registration form payment status
-    let registration = await RegistrationForm.findOne({ pet: petId });
-    if (registration) {
-      registration.paymentStatus = 'completed';
-      registration.paymentId = razorpay_payment_id;
-      registration.paymentOrderId = razorpay_order_id;
-      await registration.save();
-    } else {
-      registration = new RegistrationForm({
-        pet: petId,
-        documents: [],
-        paymentStatus: 'completed',
-        paymentId: razorpay_payment_id,
-        paymentOrderId: razorpay_order_id,
-      });
-      await registration.save();
+    
+    if (!otpRecord) {
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
     }
-
-    // If all 4 documents already uploaded before payment, advance stage
-    if (registration.documents && registration.documents.length === 4) {
-      await Pet.findByIdAndUpdate(petId, {
-        registrationStage: 1,
-        registrationStatus: 'documents_uploaded',
-      });
-
+    
+    let user = await User.findOne({ whatsappNumber: cleanedNumber });
+    
+    if (user) {
+      otpRecord.isUsed = true;
+      await otpRecord.save();
+      
+      user.lastLoginAt = new Date();
+      await user.save();
+      
+      const token = jwt.sign(
+        { userId: user._id, role: user.role },
+        process.env.JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+      
+      // ✅ CORRECT pricing calculation
+      let userRegistrationFee = 942.82;
+      if (user.city === 'ghaziabad') {
+        userRegistrationFee = 1532.82;
+      }
+      
       return res.json({
         success: true,
-        message: 'Payment verified! All documents already uploaded. You can now submit registration.',
-        allDocumentsReady: true,
+        requiresRegistration: false,
+        token,
+        user: {
+          id: user._id,
+          whatsappNumber: user.whatsappNumber,
+          email: user.email,
+          username: user.username || user.name,
+          name: user.name,
+          role: user.role,
+          city: user.city || 'other',
+          pricingTier: user.pricingTier || 'standard',
+          registrationFee: userRegistrationFee
+        }
       });
     }
-
-    return res.json({
+    
+    otpRecord.isUsed = true;
+    await otpRecord.save();
+    
+    const tempToken = jwt.sign(
+      { whatsappNumber: cleanedNumber, temp: true },
+      process.env.JWT_SECRET,
+      { expiresIn: '30m' }
+    );
+    
+    res.json({
       success: true,
-      message: 'Payment verified! Please upload your documents to complete registration.',
-      allDocumentsReady: false,
-      uploadedDocumentsCount: registration.documents?.length || 0,
+      requiresRegistration: true,
+      tempToken,
+      whatsappNumber: cleanedNumber,
+      message: 'WhatsApp number verified! Please complete your registration.'
     });
-
+    
   } catch (error) {
-    console.error('Verify payment error:', error);
+    console.error('Verify OTP error:', error);
     res.status(500).json({ error: 'Verification failed' });
   }
 });
 
-// Check payment status
-router.get('/payment-status/:petId', auth, async (req, res) => {
+// STEP 3: Complete registration
+router.post('/complete-registration', async (req, res) => {
   try {
-    const pet = await Pet.findById(req.params.petId);
-    if (!pet) {
-      return res.status(404).json({ error: 'Pet not found' });
+    const { tempToken, name, username, city, registrationFee } = req.body;
+    
+    if (!tempToken || !name) {
+      return res.status(400).json({ error: 'Name and valid session are required' });
     }
-
-    res.json({
-      paymentStatus: pet.paymentStatus || 'pending',
-      paymentAmount: pet.paymentAmount,
-      paymentDate: pet.paymentDate,
+    
+    let decoded;
+    try {
+      decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ error: 'Session expired. Please start over.' });
+    }
+    
+    if (!decoded.temp) {
+      return res.status(401).json({ error: 'Invalid session' });
+    }
+    
+    const { whatsappNumber } = decoded;
+    
+    let user = await User.findOne({ whatsappNumber });
+    if (user) {
+      return res.status(400).json({ error: 'User already exists. Please login.' });
+    }
+    
+    if (username) {
+      const usernameExists = await User.findOne({ username });
+      if (usernameExists) {
+        return res.status(400).json({ error: 'Username already taken' });
+      }
+    }
+    
+    // Determine pricing tier based on city
+    const selectedCity = city || 'other';
+    const pricingTier = selectedCity === 'ghaziabad' ? 'ghaziabad' : 'standard';
+    
+    // ✅ CORRECT pricing calculation
+    let finalRegistrationFee = registrationFee;
+    if (!finalRegistrationFee) {
+      if (selectedCity === 'ghaziabad') {
+        finalRegistrationFee = 1532.82;
+      } else {
+        finalRegistrationFee = 942.82;
+      }
+    }
+    
+    user = new User({
+      whatsappNumber,
+      name: name,
+      username: username || name.toLowerCase().replace(/\s/g, '') + Math.floor(Math.random() * 1000),
+      isVerified: true,
+      lastLoginAt: new Date(),
+      city: selectedCity,
+      pricingTier: pricingTier,
+      registrationFee: finalRegistrationFee
     });
+    
+    await user.save();
+    
+    const token = jwt.sign(
+      { userId: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        whatsappNumber: user.whatsappNumber,
+        email: user.email,
+        username: user.username,
+        name: user.name,
+        role: user.role,
+        city: user.city,
+        pricingTier: user.pricingTier,
+        registrationFee: finalRegistrationFee
+      }
+    });
+    
   } catch (error) {
-    res.status(500).json({ error: 'Failed to get payment status' });
+    console.error('Complete registration error:', error);
+    res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+// Resend OTP
+router.post('/resend-otp', async (req, res) => {
+  try {
+    const { whatsappNumber } = req.body;
+    const cleanedNumber = formatPhoneNumber(whatsappNumber);
+    
+    if (cleanedNumber.length !== 10) {
+      return res.status(400).json({ error: 'Valid 10-digit number required' });
+    }
+    
+    await OTP.deleteMany({ whatsappNumber: cleanedNumber });
+    
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    await OTP.create({
+      whatsappNumber: cleanedNumber,
+      otpCode,
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000)
+    });
+    
+    const result = await sendOTPviaWhatsApp(cleanedNumber, otpCode);
+    
+    if (!result.success) {
+      return res.status(500).json({ error: 'Failed to send OTP' });
+    }
+    
+    res.json({ success: true, message: 'OTP resent successfully' });
+    
+  } catch (error) {
+    console.error('Resend OTP error:', error);
+    res.status(500).json({ error: 'Failed to resend OTP' });
   }
 });
 
