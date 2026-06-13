@@ -5,27 +5,15 @@ const petSchema = new mongoose.Schema({
   name: { type: String, required: true, maxlength: 50 },
   species: { type: String, required: true, default: 'dog' },
 
-  // Dog Details (Breed REMOVED)
+  // Age
   ageYears: { type: Number, required: true },
   ageMonths: { type: Number, required: true },
 
-  // Photograph
+  // Photograph (owner with pet — collected in AddPetModal)
   profilePicture: { type: String },
 
-  // Vaccination Details
-  vaccinationCertificateNumber: { type: String, required: true, maxlength: 50 },
-  vaccinationDate: { type: Date, required: true },
-  // vaccinationValidTill REMOVED
-
-  // Veterinary Doctor Details
-  vetName: { type: String, required: true, maxlength: 50 },
-  vetMobile: { type: String, required: true, maxlength: 10 },
-  vetRegistrationNumber: { type: String, required: true, maxlength: 50 },
-  vetCouncilName: { type: String, required: true, maxlength: 100 },
-
-  // Additional Fields
+  // Gender
   gender: { type: String, enum: ['male', 'female', 'unknown'], default: 'unknown' },
-  // color REMOVED
 
   // License Information
   license: {
@@ -40,7 +28,12 @@ const petSchema = new mongoose.Schema({
   // Owner reference
   owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 
-  // Registration Progress Tracking
+  // Registration Progress — 3 visible stages:
+  // Stage 0 → not started (filling form / uploading docs)
+  // Stage 1 → docs uploaded, awaiting payment
+  // Stage 2 → paid + submitted (Registration Requested)
+  // Stage 3 → awaiting license
+  // Stage 4 → License Received
   registrationStage: {
     type: Number,
     enum: [0, 1, 2, 3, 4],
@@ -60,7 +53,7 @@ const petSchema = new mongoose.Schema({
     default: 'not_started',
   },
 
-  // Cached fields from RegistrationForm
+  // Cached fields from RegistrationForm (written by registration.js on every doc upload)
   uploadedDocumentsCount: { type: Number, default: 0 },
   hasAllDocuments: { type: Boolean, default: false },
   registrationTriggered: { type: Boolean, default: false },
@@ -78,15 +71,10 @@ const petSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
-// Virtual for full age display
 petSchema.virtual('fullAge').get(function () {
-  if (this.ageYears && this.ageMonths) {
-    return `${this.ageYears} years ${this.ageMonths} months`;
-  } else if (this.ageYears) {
-    return `${this.ageYears} years`;
-  } else if (this.ageMonths) {
-    return `${this.ageMonths} months`;
-  }
+  if (this.ageYears && this.ageMonths) return `${this.ageYears} years ${this.ageMonths} months`;
+  if (this.ageYears) return `${this.ageYears} years`;
+  if (this.ageMonths) return `${this.ageMonths} months`;
   return 'Unknown';
 });
 
