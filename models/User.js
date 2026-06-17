@@ -2,19 +2,24 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
-  // PRIMARY CREDENTIAL - WhatsApp number
-  whatsappNumber: { type: String, required: true, unique: true, index: true },
+  // PRIMARY CREDENTIAL - WhatsApp number (required for website users, can be null for admin)
+  whatsappNumber: { 
+    type: String, 
+    unique: true, 
+    sparse: true, // Allows null/undefined for admin users
+    index: true 
+  },
   
-  // Secondary credentials (optional)
+  // Secondary credentials (for admin email login)
   email: { type: String, unique: true, sparse: true },
   username: { type: String, unique: true, sparse: true },
-  password: { type: String }, // Optional for WhatsApp-only users
+  password: { type: String }, // Required for admin, optional for WhatsApp users
   
   // User details
   name: { type: String },
-  mobile: { type: String }, // Alternative number if different from WhatsApp
+  mobile: { type: String },
   
-  // NEW: City for pricing
+  // City for pricing
   city: { 
     type: String, 
     enum: ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad', 'other'],
@@ -26,7 +31,7 @@ const userSchema = new mongoose.Schema({
     default: 'standard' 
   },
   
-  // NEW: Store the actual registration fee
+  // Store the actual registration fee
   registrationFee: { type: Number, default: 999 },
   
   // Role and permissions
@@ -49,16 +54,18 @@ userSchema.virtual('calculatedRegistrationFee').get(function() {
 });
 
 // Auto-hash password if provided
-userSchema.pre('save', async function () {
+userSchema.pre('save', async function() {
   if (this.password && this.isModified('password')) {
     this.password = await bcrypt.hash(this.password, 12);
   }
 });
 
+// Exclude deleted users from queries
 userSchema.pre(/^find/, function() {
   this.where({ isDeleted: false });
 });
 
+// Compare password method
 userSchema.methods.comparePassword = async function(password) {
   if (!this.password) return false;
   return await bcrypt.compare(password, this.password);
