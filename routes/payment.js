@@ -22,6 +22,9 @@ try {
     });
     console.log('✅ Razorpay initialized successfully');
     console.log('📌 Key ID:', process.env.RAZORPAY_KEY_ID.substring(0, 10) + '...');
+
+    console.log(process.env.RAZORPAY_KEY_ID);
+console.log(process.env.RAZORPAY_KEY_SECRET);
   } else {
     console.error('❌ Razorpay keys missing!');
   }
