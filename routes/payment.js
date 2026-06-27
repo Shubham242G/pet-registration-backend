@@ -49,6 +49,7 @@ router.get('/test', async (req, res) => {
 // ─── CREATE ORDER ──────────────────────────────────────────────────────────
 router.post('/create-order', auth, async (req, res) => {
   try {
+    console.log("======= PAYMENT ROUTE HIT =======");
     console.log('📦 Payment order request received');
     console.log('📌 Request body:', JSON.stringify(req.body, null, 2));
     console.log('📌 User ID:', req.user?._id);
