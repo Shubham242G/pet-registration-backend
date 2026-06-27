@@ -9,11 +9,67 @@ const petSchema = new mongoose.Schema({
   ageYears: { type: Number, required: true },
   ageMonths: { type: Number, required: true },
 
-  // Photograph (owner with pet — collected in AddPetModal)
+  // Photograph
   profilePicture: { type: String },
 
   // Gender
   gender: { type: String, enum: ['male', 'female', 'unknown'], default: 'unknown' },
+
+  // City where pet is being registered
+  city: { 
+    type: String, 
+    enum: ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad', 'other'],
+    default: 'other'
+  },
+
+  // ✅ Document fields - THESE WERE MISSING FROM YOUR SCHEMA!
+  antiRabiesCertificate: {
+    fileData: { type: String },
+    fileName: { type: String },
+    fileSize: { type: Number },
+    mimeType: { type: String },
+    uploadedAt: { type: Date, default: Date.now }
+  },
+  idProof: {
+    fileData: { type: String },
+    fileName: { type: String },
+    fileSize: { type: Number },
+    mimeType: { type: String },
+    uploadedAt: { type: Date, default: Date.now }
+  },
+  residenceProof: {
+    fileData: { type: String },
+    fileName: { type: String },
+    fileSize: { type: Number },
+    mimeType: { type: String },
+    uploadedAt: { type: Date, default: Date.now }
+  },
+  ownerWithPetPhoto: {
+    fileData: { type: String },
+    fileName: { type: String },
+    fileSize: { type: Number },
+    mimeType: { type: String },
+    uploadedAt: { type: Date, default: Date.now }
+  },
+
+  // Sterilization Certificate
+  sterilizationCertificate: {
+    fileData: { type: String },
+    fileName: { type: String },
+    fileSize: { type: Number },
+    mimeType: { type: String },
+    uploadedAt: { type: Date, default: Date.now }
+  },
+
+  // Tag Delivery
+  tagDelivery: {
+    option: { 
+      type: String, 
+      enum: ['collect_from_municipal', 'deliver_to_home', 'not_applicable'],
+      default: 'collect_from_municipal'
+    },
+    cost: { type: Number, default: 0 },
+  },
 
   // License Information
   license: {
@@ -28,12 +84,7 @@ const petSchema = new mongoose.Schema({
   // Owner reference
   owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 
-  // Registration Progress — 3 visible stages:
-  // Stage 0 → not started (filling form / uploading docs)
-  // Stage 1 → docs uploaded, awaiting payment
-  // Stage 2 → paid + submitted (Registration Requested)
-  // Stage 3 → awaiting license
-  // Stage 4 → License Received
+  // Registration Progress - REMOVED DUPLICATE FIELDS
   registrationStage: {
     type: Number,
     enum: [0, 1, 2, 3, 4],
@@ -53,10 +104,10 @@ const petSchema = new mongoose.Schema({
     default: 'not_started',
   },
 
-  // Cached fields from RegistrationForm (written by registration.js on every doc upload)
-  uploadedDocumentsCount: { type: Number, default: 0 },
-  hasAllDocuments: { type: Boolean, default: false },
+  // ✅ REMOVED: uploadedDocumentsCount - can be calculated
+  // ✅ REMOVED: hasAllDocuments - can be calculated
   registrationTriggered: { type: Boolean, default: false },
+  registrationTriggeredAt: { type: Date }, // ✅ ADDED: was missing
 
   // Payment Fields
   paymentStatus: {
@@ -69,7 +120,17 @@ const petSchema = new mongoose.Schema({
   paymentAmount: { type: Number },
   paymentDate: { type: Date },
 
-}, { timestamps: true });
+}, { 
+  timestamps: true,
+  // ✅ Enable virtuals in JSON responses
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
+});
+
+// ✅ Virtuals - auto-calculated fields
+petSchema.virtual('ageInYears').get(function () {
+  return (this.ageYears || 0) + (this.ageMonths || 0) / 12;
+});
 
 petSchema.virtual('fullAge').get(function () {
   if (this.ageYears && this.ageMonths) return `${this.ageYears} years ${this.ageMonths} months`;
@@ -80,6 +141,58 @@ petSchema.virtual('fullAge').get(function () {
 
 petSchema.virtual('registrationProgress').get(function () {
   return (this.registrationStage / 4) * 100;
+});
+
+// ✅ Check if sterilization is required
+petSchema.virtual('isSterilizationRequired').get(function () {
+  if (this.city !== 'gurgaon') return false;
+  return this.ageInYears >= 4;
+});
+
+// ✅ Check if tag delivery is available
+petSchema.virtual('isTagDeliveryAvailable').get(function () {
+  return ['gurgaon', 'ghaziabad', 'delhi', 'noida'].includes(this.city);
+});
+
+// ✅ Calculate uploaded documents count
+petSchema.virtual('uploadedDocumentsCount').get(function () {
+  const docFields = ['antiRabiesCertificate', 'idProof', 'residenceProof', 'ownerWithPetPhoto', 'sterilizationCertificate'];
+  return docFields.filter(field => this[field]?.fileData).length;
+});
+
+// ✅ Get required documents count
+petSchema.virtual('requiredDocumentsCount').get(function () {
+  const baseCount = 4; // antiRabies, idProof, residenceProof, ownerWithPetPhoto
+  return baseCount + (this.isSterilizationRequired ? 1 : 0);
+});
+
+// ✅ Check if all documents are uploaded
+petSchema.virtual('hasAllDocuments').get(function () {
+  const docFields = ['antiRabiesCertificate', 'idProof', 'residenceProof', 'ownerWithPetPhoto'];
+  if (this.isSterilizationRequired) {
+    docFields.push('sterilizationCertificate');
+  }
+  return docFields.every(field => this[field]?.fileData);
+});
+
+// ✅ Get all documents as an array
+petSchema.virtual('documents').get(function () {
+  const docs = [];
+  const docFields = ['antiRabiesCertificate', 'idProof', 'residenceProof', 'ownerWithPetPhoto', 'sterilizationCertificate'];
+  
+  for (const field of docFields) {
+    if (this[field]?.fileData) {
+      docs.push({
+        documentName: field,
+        fileName: this[field].fileName,
+        fileSize: this[field].fileSize,
+        fileData: this[field].fileData,
+        mimeType: this[field].mimeType,
+        uploadedAt: this[field].uploadedAt || new Date()
+      });
+    }
+  }
+  return docs;
 });
 
 module.exports = mongoose.model('Pet', petSchema);
