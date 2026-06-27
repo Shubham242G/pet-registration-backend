@@ -8,10 +8,15 @@ router.use((req, res, next) => {
   next();
 });
 
-// Get all pets for the authenticated user
+// Get all pets for the authenticated user - OPTIMIZED: exclude heavy fileData
 router.get('/', auth, async (req, res) => {
   try {
-    const pets = await Pet.find({ owner: req.user._id });
+    const pets = await Pet.find({ owner: req.user._id })
+      .select(
+        '-antiRabiesCertificate.fileData -idProof.fileData ' +
+        '-residenceProof.fileData -ownerWithPetPhoto.fileData ' +
+        '-sterilizationCertificate.fileData'
+      );
     res.json(pets);
   } catch (error) {
     console.error('Get pets error:', error);

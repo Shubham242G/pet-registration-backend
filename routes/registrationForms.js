@@ -70,8 +70,10 @@ router.post('/:petId/documents', auth, async (req, res) => {
     
     await pet.save();
     
+    // Return full pet data with updated counts
     res.json({
       message: 'Document uploaded successfully',
+      pet: pet,
       uploadedDocumentsCount: pet.uploadedDocumentsCount,
       hasAllDocuments: pet.hasAllDocuments,
       registrationTriggered: pet.registrationTriggered
@@ -114,6 +116,7 @@ router.delete('/:petId/documents/:documentName', auth, async (req, res) => {
     
     res.json({ 
       message: 'Document deleted successfully',
+      pet: pet,
       uploadedDocumentsCount: pet.uploadedDocumentsCount,
       hasAllDocuments: pet.hasAllDocuments,
     });
@@ -149,6 +152,7 @@ router.post('/:petId/trigger-registration', auth, async (req, res) => {
     pet.registrationTriggered = true;
     pet.registrationTriggeredAt = new Date();
     pet.registrationStatus = 'form_submitted';
+    pet.registrationStage = 2; // Set stage to "Registration Requested"
     pet.paymentStatus = 'completed';
     pet.paymentAmount = paidAmount || 999;
     
@@ -169,6 +173,8 @@ router.post('/:petId/trigger-registration', auth, async (req, res) => {
         name: pet.name,
         city: pet.city,
         registrationStatus: pet.registrationStatus,
+        registrationStage: pet.registrationStage,
+        registrationTriggered: pet.registrationTriggered,
         tagDelivery: pet.tagDelivery,
       }
     });
