@@ -107,20 +107,21 @@ router.post('/create-order', auth, async (req, res) => {
       });
     }
 
-    const options = {
-      amount: amountInPaise,
-      currency: 'INR',
-      receipt: `receipt_${petId}_${Date.now()}`,
-      payment_capture: 1,
-      notes: {
-        petId: petId,
-        petName: petName || pet.name,
-        userId: userId.toString(),
-        city: pet.city || 'other',
-        tagDeliveryOption: tagDeliveryOption || 'collect_from_municipal',
-        tagDeliveryCost: tagDeliveryCost || 0,
-      },
-    };
+    const receipt = `TL${petId.slice(-8)}${Date.now().toString().slice(-8)}`;
+
+const options = {
+  amount: amountInPaise,
+  currency: "INR",
+  receipt,
+  notes: {
+    petId,
+    petName: petName || pet.name,
+    userId: userId.toString(),
+    city: pet.city || "other",
+    tagDeliveryOption: tagDeliveryOption || "collect_from_municipal",
+    tagDeliveryCost: tagDeliveryCost || 0,
+  },
+};
 
     console.log("========== RAZORPAY TEST ==========");
     const order = await razorpay.orders.create(options);
