@@ -130,6 +130,10 @@ router.post('/create-order', auth, async (req, res) => {
     console.log("========== RAZORPAY TEST ==========");
     const order = await razorpay.orders.create(options);
      console.log("ORDER CREATED");
+     console.log({
+  KEY: process.env.RAZORPAY_KEY_ID,
+  SECRET: process.env.RAZORPAY_KEY_SECRET,
+});
   console.log(order);
 
     await Pet.findByIdAndUpdate(petId, {
@@ -145,19 +149,20 @@ router.post('/create-order', auth, async (req, res) => {
       currency: order.currency,
     });
   } catch (error) {
-    console.log("========== RAZORPAY ERROR ==========");
-  throw error;
-    
-    // Send detailed error for debugging
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Failed to create order',
-      details: error.error || error.message,
-      statusCode: error.statusCode || 500,
-      // Only include stack in development
-      ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-    });
-  }
+  console.log("========== RAZORPAY ERROR ==========");
+  console.error(error);
+  console.error("statusCode:", error.statusCode);
+  console.error("error:", error.error);
+  console.error("message:", error.message);
+  console.error("stack:", error.stack);
+
+  return res.status(500).json({
+    success: false,
+    message: error.message,
+    statusCode: error.statusCode,
+    error: error.error,
+  });
+}
 });
 
 // ─── VERIFY PAYMENT ──────────────────────────────────────────────────────
