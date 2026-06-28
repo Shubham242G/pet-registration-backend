@@ -8,8 +8,7 @@ const RegistrationForm = require('../models/RegsitrationForm');
 
 // ✅ Debug: Log environment variables at startup
 console.log('🔧 Payment route initialization');
-console.log('📌 RAZORPAY_KEY_ID exists:', !!process.env.RAZORPAY_KEY_ID);
-console.log('📌 RAZORPAY_KEY_SECRET exists:', !!process.env.RAZORPAY_KEY_SECRET);
+
 console.log('📌 NODE_ENV:', process.env.NODE_ENV);
 
 // Initialize Razorpay with better error handling
@@ -21,10 +20,8 @@ try {
       key_secret: process.env.RAZORPAY_KEY_SECRET,
     });
     console.log('✅ Razorpay initialized successfully');
-    console.log('📌 Key ID:', process.env.RAZORPAY_KEY_ID.substring(0, 10) + '...');
+    
 
-    console.log(process.env.RAZORPAY_KEY_ID);
-console.log(process.env.RAZORPAY_KEY_SECRET);
   } else {
     console.error('❌ Razorpay keys missing!');
   }
@@ -130,9 +127,10 @@ router.post('/create-order', auth, async (req, res) => {
       },
     };
 
-    console.log('📤 Creating Razorpay order...');
+    console.log("========== RAZORPAY TEST ==========");
     const order = await razorpay.orders.create(options);
-    console.log(`✅ Order created: ${order.id}`);
+     console.log("ORDER CREATED");
+  console.log(order);
 
     await Pet.findByIdAndUpdate(petId, {
       paymentOrderId: order.id,
@@ -147,11 +145,12 @@ router.post('/create-order', auth, async (req, res) => {
       currency: order.currency,
     });
   } catch (error) {
-    console.error('❌ Razorpay order creation error:');
-    console.error('📌 Error message:', error.message);
-    console.error('📌 Error stack:', error.stack);
-    console.error('📌 Error details:', error.error || 'No additional details');
-    console.error('📌 Error status code:', error.statusCode || 'No status code');
+    console.log("========== RAZORPAY ERROR ==========");
+  console.log(err);
+  console.log("statusCode:", err.statusCode);
+  console.log("error:", err.error);
+  console.log("response:", err.response);
+  throw err;
     
     // Send detailed error for debugging
     res.status(500).json({ 
