@@ -146,11 +146,7 @@ router.post('/create-order', auth, async (req, res) => {
     });
   } catch (error) {
     console.log("========== RAZORPAY ERROR ==========");
-  console.log(err);
-  console.log("statusCode:", err.statusCode);
-  console.log("error:", err.error);
-  console.log("response:", err.response);
-  throw err;
+  throw error;
     
     // Send detailed error for debugging
     res.status(500).json({ 
