@@ -6,10 +6,8 @@ const { auth } = require('../middleware/auth');
 const Pet = require('../models/Pet');
 const RegistrationForm = require('../models/RegsitrationForm');
 
-// ✅ Debug: Log environment variables at startup
-console.log('🔧 Payment route initialization');
 
-console.log('📌 NODE_ENV:', process.env.NODE_ENV);
+
 
 // Initialize Razorpay with better error handling
 let razorpay = null;
@@ -49,10 +47,7 @@ router.get('/test', async (req, res) => {
 // ─── CREATE ORDER ──────────────────────────────────────────────────────────
 router.post('/create-order', auth, async (req, res) => {
   try {
-    console.log("======= PAYMENT ROUTE HIT =======");
-    console.log('📦 Payment order request received');
-    console.log('📌 Request body:', JSON.stringify(req.body, null, 2));
-    console.log('📌 User ID:', req.user?._id);
+  
     
     // ✅ Check if Razorpay is initialized
     if (!razorpay) {
@@ -130,11 +125,7 @@ router.post('/create-order', auth, async (req, res) => {
     console.log("========== RAZORPAY TEST ==========");
     const order = await razorpay.orders.create(options);
      console.log("ORDER CREATED");
-     console.log({
-  KEY: process.env.RAZORPAY_KEY_ID,
-  SECRET: process.env.RAZORPAY_KEY_SECRET,
-});
-  console.log(order);
+
 
     await Pet.findByIdAndUpdate(petId, {
       paymentOrderId: order.id,
