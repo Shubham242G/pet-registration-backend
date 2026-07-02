@@ -1,13 +1,23 @@
+// models/RegistrationForm.js
 const mongoose = require('mongoose');
 
 // Document sub-schema with Base64 storage
 const documentStatusSchema = new mongoose.Schema({
   documentName: {
     type: String,
-    enum: ['antiRabiesCertificate', 'idProof', 'residenceProof', 'ownerWithPetPhoto'],
+    enum: [
+      'antiRabiesCertificate', 
+      'idProof', 
+      'residenceProof', 
+      'ownerWithPetPhoto',
+      'petPhoto',              // ✅ NEW
+      'vaccinationCard',       // ✅ NEW
+      'vaccinationCertificate', // ✅ NEW
+      'sterilizationCertificate' // ✅ NEW
+    ],
     required: true,
   },
-  fileData: { type: String, required: true }, // Base64 data
+  fileData: { type: String, required: true },
   fileName: { type: String, required: true },
   fileSize: { type: Number, required: true },
   mimeType: { type: String, required: true },
@@ -24,6 +34,7 @@ const registrationFormSchema = new mongoose.Schema({
   paymentStatus: { type: String, enum: ['pending', 'completed', 'failed'], default: 'pending' },
   paymentId: { type: String },
   paymentOrderId: { type: String },
+  paymentAmount: { type: Number },
 }, { timestamps: true });
 
 // Virtuals
@@ -32,22 +43,26 @@ registrationFormSchema.virtual('uploadedDocumentsCount').get(function () {
 });
 
 registrationFormSchema.virtual('hasAllDocuments').get(function () {
-  return this.documents.length === 4;
+  return this.documents.length >= 4;
 });
 
 registrationFormSchema.virtual('missingDocuments').get(function () {
-  const requiredDocs = ['antiRabiesCertificate', 'idProof', 'residenceProof', 'ownerWithPetPhoto'];
+  const requiredDocs = [
+    'antiRabiesCertificate', 
+    'idProof', 
+    'residenceProof', 
+    'ownerWithPetPhoto',
+    'petPhoto',
+    'vaccinationCard',
+    'vaccinationCertificate',
+    'sterilizationCertificate'
+  ];
   const uploadedDocNames = this.documents.map(doc => doc.documentName);
   return requiredDocs.filter(doc => !uploadedDocNames.includes(doc));
 });
 
-// FIX: Removed Pet.findByIdAndUpdate from inside this method.
-// Previously it was updating the Pet document here AND in the route handler,
-// causing a double-write on every trigger. Now only the route handles Pet updates.
-// The paymentVerified param is kept but now the route checks pet.paymentStatus
-// from DB instead of trusting a client-sent flag (see registration.js).
 registrationFormSchema.methods.triggerRegistration = async function (paymentVerified = false) {
-  if (this.documents.length === 4 && !this.registrationTriggered && paymentVerified) {
+  if (this.documents.length >= 4 && !this.registrationTriggered && paymentVerified) {
     this.registrationTriggered = true;
     this.registrationTriggeredAt = new Date();
     this.isComplete = true;

@@ -22,7 +22,7 @@ const petSchema = new mongoose.Schema({
     default: 'other'
   },
 
-  // ✅ Document fields - THESE WERE MISSING FROM YOUR SCHEMA!
+  // ✅ Document fields
   antiRabiesCertificate: {
     fileData: { type: String },
     fileName: { type: String },
@@ -45,6 +45,33 @@ const petSchema = new mongoose.Schema({
     uploadedAt: { type: Date, default: Date.now }
   },
   ownerWithPetPhoto: {
+    fileData: { type: String },
+    fileName: { type: String },
+    fileSize: { type: Number },
+    mimeType: { type: String },
+    uploadedAt: { type: Date, default: Date.now }
+  },
+
+  // ✅ NEW: Pet photo alone (without owner)
+  petPhoto: {
+    fileData: { type: String },
+    fileName: { type: String },
+    fileSize: { type: Number },
+    mimeType: { type: String },
+    uploadedAt: { type: Date, default: Date.now }
+  },
+
+  // ✅ NEW: Vaccination Card
+  vaccinationCard: {
+    fileData: { type: String },
+    fileName: { type: String },
+    fileSize: { type: Number },
+    mimeType: { type: String },
+    uploadedAt: { type: Date, default: Date.now }
+  },
+
+  // ✅ NEW: Vaccination Certificate
+  vaccinationCertificate: {
     fileData: { type: String },
     fileName: { type: String },
     fileSize: { type: Number },
@@ -84,7 +111,7 @@ const petSchema = new mongoose.Schema({
   // Owner reference
   owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 
-  // Registration Progress - REMOVED DUPLICATE FIELDS
+  // Registration Progress
   registrationStage: {
     type: Number,
     enum: [0, 1, 2, 3, 4],
@@ -104,10 +131,8 @@ const petSchema = new mongoose.Schema({
     default: 'not_started',
   },
 
-  // ✅ REMOVED: uploadedDocumentsCount - can be calculated
-  // ✅ REMOVED: hasAllDocuments - can be calculated
   registrationTriggered: { type: Boolean, default: false },
-  registrationTriggeredAt: { type: Date }, // ✅ ADDED: was missing
+  registrationTriggeredAt: { type: Date },
 
   // Payment Fields
   paymentStatus: {
@@ -122,7 +147,6 @@ const petSchema = new mongoose.Schema({
 
 }, { 
   timestamps: true,
-  // ✅ Enable virtuals in JSON responses
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
 });
@@ -154,31 +178,64 @@ petSchema.virtual('isTagDeliveryAvailable').get(function () {
   return ['gurgaon', 'ghaziabad', 'delhi', 'noida'].includes(this.city);
 });
 
-// ✅ Calculate uploaded documents count
+// ✅ Calculate uploaded documents count - UPDATED with new docs
 petSchema.virtual('uploadedDocumentsCount').get(function () {
-  const docFields = ['antiRabiesCertificate', 'idProof', 'residenceProof', 'ownerWithPetPhoto', 'sterilizationCertificate'];
+  const docFields = [
+    'antiRabiesCertificate', 
+    'idProof', 
+    'residenceProof', 
+    'ownerWithPetPhoto',
+    'petPhoto',
+    'vaccinationCard',
+    'vaccinationCertificate',
+    'sterilizationCertificate'
+  ];
   return docFields.filter(field => this[field]?.fileData).length;
 });
 
-// ✅ Get required documents count
+// ✅ Get required documents count - UPDATED for Gurgaon
 petSchema.virtual('requiredDocumentsCount').get(function () {
-  const baseCount = 4; // antiRabies, idProof, residenceProof, ownerWithPetPhoto
-  return baseCount + (this.isSterilizationRequired ? 1 : 0);
+  const isGurgaon = this.city === 'gurgaon';
+  let count = 4; // antiRabies, idProof, residenceProof, ownerWithPetPhoto
+  
+  if (isGurgaon) {
+    count += 3; // petPhoto, vaccinationCard, vaccinationCertificate
+    if (this.isSterilizationRequired) {
+      count += 1; // sterilizationCertificate
+    }
+  }
+  
+  return count;
 });
 
-// ✅ Check if all documents are uploaded
+// ✅ Check if all documents are uploaded - UPDATED with new docs
 petSchema.virtual('hasAllDocuments').get(function () {
+  const isGurgaon = this.city === 'gurgaon';
   const docFields = ['antiRabiesCertificate', 'idProof', 'residenceProof', 'ownerWithPetPhoto'];
-  if (this.isSterilizationRequired) {
-    docFields.push('sterilizationCertificate');
+  
+  if (isGurgaon) {
+    docFields.push('petPhoto', 'vaccinationCard', 'vaccinationCertificate');
+    if (this.isSterilizationRequired) {
+      docFields.push('sterilizationCertificate');
+    }
   }
+  
   return docFields.every(field => this[field]?.fileData);
 });
 
-// ✅ Get all documents as an array
+// ✅ Get all documents as an array - UPDATED with new docs
 petSchema.virtual('documents').get(function () {
   const docs = [];
-  const docFields = ['antiRabiesCertificate', 'idProof', 'residenceProof', 'ownerWithPetPhoto', 'sterilizationCertificate'];
+  const docFields = [
+    'antiRabiesCertificate', 
+    'idProof', 
+    'residenceProof', 
+    'ownerWithPetPhoto',
+    'petPhoto',
+    'vaccinationCard',
+    'vaccinationCertificate',
+    'sterilizationCertificate'
+  ];
   
   for (const field of docFields) {
     if (this[field]?.fileData) {

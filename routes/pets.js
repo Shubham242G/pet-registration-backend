@@ -1,5 +1,6 @@
 const express = require('express');
 const Pet = require('../models/Pet');
+const RegistrationForm = require('../models/RegsitrationForm'); // ✅ Add this
 const { auth } = require('../middleware/auth');
 const router = express.Router();
 
@@ -8,14 +9,15 @@ router.use((req, res, next) => {
   next();
 });
 
-// Get all pets for the authenticated user - OPTIMIZED: exclude heavy fileData
+// Get all pets - EXCLUDE fileData from ALL document fields
 router.get('/', auth, async (req, res) => {
   try {
     const pets = await Pet.find({ owner: req.user._id })
       .select(
         '-antiRabiesCertificate.fileData -idProof.fileData ' +
         '-residenceProof.fileData -ownerWithPetPhoto.fileData ' +
-        '-sterilizationCertificate.fileData'
+        '-petPhoto.fileData -vaccinationCard.fileData ' +
+        '-vaccinationCertificate.fileData -sterilizationCertificate.fileData'
       );
     res.json(pets);
   } catch (error) {
@@ -47,6 +49,17 @@ router.post('/', auth, async (req, res) => {
     };
     const pet = new Pet(petData);
     await pet.save();
+    
+    // ✅ Create registration form for the pet
+    const registrationForm = new RegistrationForm({
+      pet: pet._id,
+      documents: [],
+      registrationTriggered: false,
+      isComplete: false,
+      paymentStatus: 'pending'
+    });
+    await registrationForm.save();
+    
     res.status(201).json(pet);
   } catch (error) {
     console.error('Create pet error:', error);
@@ -75,6 +88,10 @@ router.delete('/:id', auth, async (req, res) => {
   try {
     const pet = await Pet.findOneAndDelete({ _id: req.params.id, owner: req.user._id });
     if (!pet) return res.status(404).json({ message: 'Pet not found' });
+    
+    // ✅ Delete registration form as well
+    await RegistrationForm.findOneAndDelete({ pet: pet._id });
+    
     res.json({ message: 'Pet deleted successfully' });
   } catch (error) {
     console.error('Delete pet error:', error);
