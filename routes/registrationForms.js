@@ -8,7 +8,13 @@ const { auth } = require('../middleware/auth');
 // Helper function to calculate required documents count
 function getRequiredDocumentsCount(pet) {
   const isGurgaon = pet.city === 'gurgaon';
+  const isFaridabad = pet.city === 'faridabad';
   const ageInYears = (pet.ageYears || 0) + (pet.ageMonths || 0) / 12;
+  
+  if (isFaridabad) {
+    return 6; // Proof of Identity, Proof of Address, Vaccination Record, Pet Photographs, Sterilization Certificate, Microchip Details
+  }
+  
   let count = 4; // Base: antiRabies, idProof, residenceProof, ownerWithPetPhoto
   
   if (isGurgaon) {
@@ -24,7 +30,22 @@ function getRequiredDocumentsCount(pet) {
 // Helper function to get required document names
 function getRequiredDocumentNames(pet) {
   const isGurgaon = pet.city === 'gurgaon';
+  const isFaridabad = pet.city === 'faridabad';
   const ageInYears = (pet.ageYears || 0) + (pet.ageMonths || 0) / 12;
+  
+  // Faridabad docs
+  if (isFaridabad) {
+    return [
+      'proofOfIdentity',
+      'proofOfAddress',
+      'vaccinationRecord',
+      'petPhotographs',
+      'sterilizationCertificate',
+      'microchipDetails'
+    ];
+  }
+  
+  // Base docs for all cities
   const docs = [
     'antiRabiesCertificate', 
     'idProof', 
@@ -32,6 +53,7 @@ function getRequiredDocumentNames(pet) {
     'ownerWithPetPhoto'
   ];
   
+  // Gurgaon additional docs
   if (isGurgaon) {
     docs.push('petPhoto', 'vaccinationCard', 'vaccinationCertificate');
     if (ageInYears >= 4) {

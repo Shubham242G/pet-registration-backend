@@ -10,10 +10,16 @@ const documentStatusSchema = new mongoose.Schema({
       'idProof', 
       'residenceProof', 
       'ownerWithPetPhoto',
-      'petPhoto',              // ✅ NEW
-      'vaccinationCard',       // ✅ NEW
-      'vaccinationCertificate', // ✅ NEW
-      'sterilizationCertificate' // ✅ NEW
+      'petPhoto',              // Gurgaon
+      'vaccinationCard',       // Gurgaon
+      'vaccinationCertificate', // Gurgaon
+      'sterilizationCertificate', // Gurgaon (4+ years) & Faridabad
+      // Faridabad docs
+      'proofOfIdentity',
+      'proofOfAddress',
+      'vaccinationRecord',
+      'petPhotographs',
+      'microchipDetails',
     ],
     required: true,
   },

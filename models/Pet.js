@@ -10,7 +10,7 @@ const petSchema = new mongoose.Schema({
   ageMonths: { type: Number, required: true },
 
   // Photograph
-  profilePicture: { type: String },
+  profilePicture: { type: String, required: true, },
 
   // Gender
   gender: { type: String, enum: ['male', 'female', 'unknown'], default: 'unknown' },
@@ -18,7 +18,7 @@ const petSchema = new mongoose.Schema({
   // City where pet is being registered
   city: { 
     type: String, 
-    enum: ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad', 'other'],
+    enum: ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad'],
     default: 'other'
   },
 
