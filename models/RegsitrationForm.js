@@ -6,14 +6,20 @@ const documentStatusSchema = new mongoose.Schema({
   documentName: {
     type: String,
     enum: [
+      // Common documents
       'antiRabiesCertificate', 
       'idProof', 
       'residenceProof', 
       'ownerWithPetPhoto',
-      'petPhoto',              // Gurgaon
-      'vaccinationCard',       // Gurgaon
-      'vaccinationCertificate', // Gurgaon
-      'sterilizationCertificate', // Gurgaon (4+ years) & Faridabad
+      'petPhoto',
+      'vaccinationCard',        // Used for ALL cities
+      'vaccinationCertificate',
+      'sterilizationCertificate',
+      
+      // Ghaziabad & Noida specific
+      'ownerPhoto',
+      'ownerSignature',
+      
       // Faridabad docs
       'proofOfIdentity',
       'proofOfAddress',
@@ -53,18 +59,7 @@ registrationFormSchema.virtual('hasAllDocuments').get(function () {
 });
 
 registrationFormSchema.virtual('missingDocuments').get(function () {
-  const requiredDocs = [
-    'antiRabiesCertificate', 
-    'idProof', 
-    'residenceProof', 
-    'ownerWithPetPhoto',
-    'petPhoto',
-    'vaccinationCard',
-    'vaccinationCertificate',
-    'sterilizationCertificate'
-  ];
-  const uploadedDocNames = this.documents.map(doc => doc.documentName);
-  return requiredDocs.filter(doc => !uploadedDocNames.includes(doc));
+  return [];
 });
 
 registrationFormSchema.methods.triggerRegistration = async function (paymentVerified = false) {

@@ -109,9 +109,11 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 require('dotenv').config();
 
+
+
 const app = express();
 
-// SIMPLIFIED CORS - Place this BEFORE any routes
+// Security & Performance middleware
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
@@ -128,76 +130,53 @@ const allowedOrigins = [
   'https://tailio.in'
 ];
 
-// Option 1: Use the simpler approach first (for testing)
-app.use(cors({
-  origin: function (origin, callback) {
-    // Allow all origins in development
-    if (process.env.NODE_ENV === 'development') {
-      return callback(null, true);
-    }
-    
-    // Production: check allowed origins
-    if (!origin) return callback(null, true);
-    
-    // Check if origin is allowed
-    if (allowedOrigins.includes(origin) || 
-        origin.match(/https:\/\/.*\.vercel\.app$/) ||
-        origin.match(/^http:\/\/localhost:\d+$/) ||
-        origin.match(/^http:\/\/127\.0\.0\.1:\d+$/)) {
-      callback(null, true);
-    } else {
-      console.log(`CORS blocked origin: ${origin}`);
-      callback(new Error(`Not allowed by CORS`));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-  exposedHeaders: ['Content-Range', 'X-Content-Range'],
-  maxAge: 86400,
-}));
-
-// Add this manual CORS header middleware as a fallback
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  
-  // Check if origin is allowed
-  if (origin && (allowedOrigins.includes(origin) || 
-      origin.match(/https:\/\/.*\.vercel\.app$/) ||
-      origin.match(/^http:\/\/localhost:\d+$/) ||
-      origin.match(/^http:\/\/127\.0\.0\.1:\d+$/))) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Credentials', 'true');
-  }
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
-    res.header('Access-Control-Max-Age', '86400');
-    return res.status(200).json({});
-  }
-  
-  next();
-});
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) {
+        return callback(null, true);
+      }
+      
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } 
+      else if (origin && origin.match(/https:\/\/.*\.vercel\.app$/)) {
+        callback(null, true);
+      }
+      else if (origin && origin.match(/^http:\/\/localhost:\d+$/)) {
+        callback(null, true);
+      }
+      else if (origin && origin.match(/^http:\/\/127\.0\.0\.1:\d+$/)) {
+        callback(null, true);
+      }
+      else {
+        console.log(`CORS blocked origin: ${origin}`);
+        callback(new Error(`Not allowed by CORS: ${origin}`));
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    maxAge: 86400,
+  })
+);
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Log requests - place this after CORS
+// Log requests
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-  console.log('Origin:', req.headers.origin);
-  console.log('Headers:', req.headers);
   next();
 });
 
-// Database connection
+// Database
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB Connected Successfully'))
   .catch(err => console.error('MongoDB Error:', err));
 
-// Routes - make sure these exist
+// Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/pets', require('./routes/pets'));
 app.use('/api/registration', require('./routes/registrationForms'));
@@ -205,7 +184,8 @@ app.use('/api/admin', require('./routes/admin/admin'));
 app.use('/api/whatsapp-auth', require('./routes/whatsappAuth'));
 app.use('/api/payment', require('./routes/payment'));
 app.use('/api/blog', require('./routes/blog'));
-
+app.use('/api/whatsapp', require('./routes/whatsapp'));
+// app.use('/api/email', require('./routes/email'));
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ message: 'Route not found' });
@@ -214,10 +194,7 @@ app.use((req, res) => {
 // Global error handler
 app.use((err, req, res, next) => {
   console.error('Server Error:', err.stack);
-  res.status(500).json({ 
-    message: 'Server error', 
-    error: process.env.NODE_ENV === 'development' ? err.message : {} 
-  });
+  res.status(500).json({ message: 'Server error', error: process.env.NODE_ENV === 'development' ? err.message : {} });
 });
 
 const PORT = process.env.PORT || 5000;

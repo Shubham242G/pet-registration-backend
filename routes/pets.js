@@ -1,6 +1,7 @@
+// routes/pets.js
 const express = require('express');
 const Pet = require('../models/Pet');
-const RegistrationForm = require('../models/RegsitrationForm'); // ✅ Add this
+const RegistrationForm = require('../models/RegsitrationForm');
 const { auth } = require('../middleware/auth');
 const router = express.Router();
 
@@ -17,7 +18,10 @@ router.get('/', auth, async (req, res) => {
         '-antiRabiesCertificate.fileData -idProof.fileData ' +
         '-residenceProof.fileData -ownerWithPetPhoto.fileData ' +
         '-petPhoto.fileData -vaccinationCard.fileData ' +
-        '-vaccinationCertificate.fileData -sterilizationCertificate.fileData'
+        '-vaccinationCertificate.fileData -sterilizationCertificate.fileData ' +
+        '-ownerPhoto.fileData -ownerSignature.fileData -vaccinationBook.fileData ' +
+        '-proofOfIdentity.fileData -proofOfAddress.fileData ' +
+        '-vaccinationRecord.fileData -petPhotographs.fileData -microchipDetails.fileData'
       );
     res.json(pets);
   } catch (error) {
