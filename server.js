@@ -184,7 +184,7 @@ app.use('/api/admin', require('./routes/admin/admin'));
 app.use('/api/whatsapp-auth', require('./routes/whatsappAuth'));
 app.use('/api/payment', require('./routes/payment'));
 app.use('/api/blog', require('./routes/blog'));
-app.use('/api/whatsapp', require('./routes/whatsapp'));
+// app.use('/api/whatsapp', require('./routes/whatsapp'));
 // app.use('/api/email', require('./routes/email'));
 // 404 handler
 app.use((req, res) => {
