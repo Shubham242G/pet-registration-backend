@@ -8,7 +8,7 @@ const User = require('../../models/User');
 router.use(auth);
 router.use(requireRole('admin'));
 
-// ==================== TEST ENDPOINT ====================
+// ==================== TEST ====================
 router.get('/test', (req, res) => {
   res.json({ 
     message: '✅ Admin routes working!',
@@ -20,54 +20,37 @@ router.get('/test', (req, res) => {
 router.get('/dashboard/stats', async (req, res) => {
   console.log('📊 Dashboard stats requested');
   try {
-    // Get basic counts - these should always work
-    const totalCustomers = await User.countDocuments({ role: 'user' });
-    const totalPets = await Pet.countDocuments();
-    const totalRegistrations = await RegistrationForm.countDocuments();
+    const [
+      totalCustomers,
+      totalPets,
+      totalRegistrations,
+      completedRegistrations,
+      recentRegistrations,
+      stage0, stage1, stage2, stage3, stage4
+    ] = await Promise.all([
+      User.countDocuments({ role: 'user' }),
+      Pet.countDocuments(),
+      RegistrationForm.countDocuments(),
+      RegistrationForm.countDocuments({ registrationTriggered: true }).catch(() => 0),
+      RegistrationForm.countDocuments({
+        createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+      }).catch(() => 0),
+      Pet.countDocuments({ registrationStage: 0 }).catch(() => 0),
+      Pet.countDocuments({ registrationStage: 1 }).catch(() => 0),
+      Pet.countDocuments({ registrationStage: 2 }).catch(() => 0),
+      Pet.countDocuments({ registrationStage: 3 }).catch(() => 0),
+      Pet.countDocuments({ registrationStage: 4 }).catch(() => 0)
+    ]);
     
-    // Try to get completed registrations, but don't fail if field doesn't exist
-    let completedRegistrations = 0;
-    try {
-      completedRegistrations = await RegistrationForm.countDocuments({ 
-        registrationTriggered: true 
-      });
-    } catch (e) {
-      console.log('⚠️ registrationTriggered field not found, using 0');
-    }
-    
-    const pendingRegistrations = totalRegistrations - completedRegistrations;
-    
-    // Recent registrations
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    let recentRegistrations = 0;
-    try {
-      recentRegistrations = await RegistrationForm.countDocuments({
-        createdAt: { $gte: thirtyDaysAgo }
-      });
-    } catch (e) {
-      console.log('⚠️ recentRegistrations query failed, using 0');
-    }
-    
-    // Stages - try to get, but don't fail
-    let stage0 = 0, stage1 = 0, stage2 = 0, stage3 = 0, stage4 = 0;
-    try {
-      stage0 = await Pet.countDocuments({ registrationStage: 0 });
-      stage1 = await Pet.countDocuments({ registrationStage: 1 });
-      stage2 = await Pet.countDocuments({ registrationStage: 2 });
-      stage3 = await Pet.countDocuments({ registrationStage: 3 });
-      stage4 = await Pet.countDocuments({ registrationStage: 4 });
-    } catch (e) {
-      console.log('⚠️ Stage queries failed, using 0');
-    }
+    const pendingRegistrations = totalRegistrations - (completedRegistrations || 0);
     
     res.json({
       totalCustomers,
       totalPets,
       totalRegistrations,
-      completedRegistrations,
+      completedRegistrations: completedRegistrations || 0,
       pendingRegistrations,
-      recentRegistrations,
+      recentRegistrations: recentRegistrations || 0,
       stages: { stage0, stage1, stage2, stage3, stage4 }
     });
   } catch (error) {
@@ -79,143 +62,222 @@ router.get('/dashboard/stats', async (req, res) => {
   }
 });
 
-// ==================== REGISTRATIONS (SAFE VERSION) ====================
-router.get('/registrations', async (req, res) => {
-  console.log('📋 Registrations requested - SAFE VERSION');
-  try {
-    // First, get registrations without populate (this should always work)
-    const registrations = await RegistrationForm.find()
-      .sort({ createdAt: -1 })
-      .limit(50);
-    
-    console.log(`✅ Found ${registrations.length} registrations`);
-    
-    // If we have registrations, try to populate them
-    let populatedRegistrations = [];
-    if (registrations.length > 0) {
-      try {
-        // Try to populate with pet data
-        populatedRegistrations = await RegistrationForm.find()
-          .populate('pet')
-          .sort({ createdAt: -1 })
-          .limit(50);
-        
-        // Try to populate owner as well
-        for (let reg of populatedRegistrations) {
-          if (reg.pet && reg.pet._id) {
-            try {
-              const petWithOwner = await Pet.findById(reg.pet._id).populate('owner', 'name email username mobile');
-              if (petWithOwner) {
-                reg.pet = petWithOwner;
-              }
-            } catch (e) {
-              console.log('⚠️ Could not populate owner for pet:', reg.pet._id);
-            }
-          }
-        }
-        
-        console.log(`✅ Populated ${populatedRegistrations.length} registrations`);
-      } catch (popError) {
-        console.log('⚠️ Populate failed, sending unpopulated data');
-        populatedRegistrations = registrations;
-      }
-    }
-    
-    res.json(populatedRegistrations.length > 0 ? populatedRegistrations : registrations);
-  } catch (error) {
-    console.error('❌ Error fetching registrations:', error);
-    // Send empty array instead of crashing
-    res.json([]);
-  }
-});
-
-// ==================== PETS (SAFE VERSION) ====================
-router.get('/pets', async (req, res) => {
-  console.log('🐾 Pets requested - SAFE VERSION');
-  try {
-    const pets = await Pet.find()
-      .sort({ createdAt: -1 })
-      .limit(50);
-    
-    // Try to populate owner, but don't fail if it doesn't work
-    let populatedPets = [];
-    for (let pet of pets) {
-      try {
-        const petWithOwner = await Pet.findById(pet._id).populate('owner', 'name email username mobile');
-        if (petWithOwner) {
-          populatedPets.push(petWithOwner);
-        } else {
-          populatedPets.push(pet);
-        }
-      } catch (e) {
-        populatedPets.push(pet);
-        console.log('⚠️ Could not populate owner for pet:', pet._id);
-      }
-    }
-    
-    res.json(populatedPets);
-  } catch (error) {
-    console.error('❌ Error fetching pets:', error);
-    res.json([]);
-  }
-});
-
-// ==================== CUSTOMERS (SAFE VERSION) ====================
+// ==================== CUSTOMER MANAGEMENT ====================
 router.get('/customers', async (req, res) => {
-  console.log('👥 Customers requested - SAFE VERSION');
+  console.log('👥 Customers requested');
   try {
-    const customers = await User.find({ role: 'user' })
-      .select('-password')
-      .sort({ createdAt: -1 })
-      .limit(50);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
     
-    // Add pet counts for each customer
-    const customersWithStats = [];
-    for (let customer of customers) {
-      try {
-        const petCount = await Pet.countDocuments({ owner: customer._id });
-        const registeredPets = await Pet.countDocuments({ 
-          owner: customer._id, 
-          registrationStage: 4 
-        });
-        customersWithStats.push({
-          ...customer.toObject(),
-          petCount,
-          registeredPets: registeredPets || 0
-        });
-      } catch (e) {
-        customersWithStats.push({
-          ...customer.toObject(),
-          petCount: 0,
-          registeredPets: 0
-        });
+    const [total, customers] = await Promise.all([
+      User.countDocuments({ role: 'user' }),
+      User.find({ role: 'user' })
+        .select('-password')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean()
+    ]);
+    
+    // Get pet counts for each customer (batch query for efficiency)
+    const customerIds = customers.map(c => c._id);
+    const petCounts = await Pet.aggregate([
+      { $match: { owner: { $in: customerIds } } },
+      { $group: { _id: '$owner', count: { $sum: 1 } } }
+    ]);
+    
+    const registeredPetCounts = await Pet.aggregate([
+      { $match: { owner: { $in: customerIds }, registrationStage: 4 } },
+      { $group: { _id: '$owner', count: { $sum: 1 } } }
+    ]);
+    
+    // Create maps for quick lookup
+    const petCountMap = {};
+    petCounts.forEach(item => { petCountMap[item._id] = item.count; });
+    
+    const registeredPetMap = {};
+    registeredPetCounts.forEach(item => { registeredPetMap[item._id] = item.count; });
+    
+    // Add counts to customers
+    const customersWithStats = customers.map(customer => ({
+      ...customer,
+      petCount: petCountMap[customer._id] || 0,
+      registeredPets: registeredPetMap[customer._id] || 0
+    }));
+    
+    res.json({
+      customers: customersWithStats,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
       }
-    }
-    
-    res.json(customersWithStats);
+    });
   } catch (error) {
     console.error('❌ Error fetching customers:', error);
-    res.json([]);
+    res.status(500).json({ message: error.message });
   }
 });
 
-// ==================== CUSTOMER BY ID ====================
 router.get('/customers/:id', async (req, res) => {
   try {
-    const customer = await User.findById(req.params.id).select('-password');
+    const customer = await User.findById(req.params.id).select('-password').lean();
     
     if (!customer) {
       return res.status(404).json({ message: 'Customer not found' });
     }
     
-    const pets = await Pet.find({ owner: customer._id });
-    const registrations = await RegistrationForm.find({ 
-      pet: { $in: pets.map(p => p._id) }
-    });
+    const [pets, registrations] = await Promise.all([
+      Pet.find({ owner: customer._id }).lean(),
+      RegistrationForm.find({ pet: { $in: await Pet.find({ owner: customer._id }).distinct('_id') } })
+        .populate('pet')
+        .lean()
+    ]);
     
     res.json({ customer, pets, registrations });
   } catch (error) {
     console.error('❌ Error fetching customer:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ==================== PET MANAGEMENT ====================
+router.get('/pets', async (req, res) => {
+  console.log('🐾 Pets requested');
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
+    
+    const [total, pets] = await Promise.all([
+      Pet.countDocuments(),
+      Pet.find()
+        .populate('owner', 'name email username mobile')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean()
+    ]);
+    
+    // Get registration info for each pet
+    const petIds = pets.map(p => p._id);
+    const registrations = await RegistrationForm.find({ pet: { $in: petIds } }).lean();
+    const registrationMap = {};
+    registrations.forEach(reg => {
+      registrationMap[reg.pet] = reg;
+    });
+    
+    // Add registration status to pets
+    const petsWithStatus = pets.map(pet => ({
+      ...pet,
+      registrationStatus: registrationMap[pet._id] ? {
+        hasDocuments: registrationMap[pet._id].documents ? registrationMap[pet._id].documents.length : 0,
+        totalDocuments: 4,
+        registrationTriggered: registrationMap[pet._id].registrationTriggered || false,
+        registrationTriggeredAt: registrationMap[pet._id].registrationTriggeredAt || null,
+        isComplete: registrationMap[pet._id].isComplete || false
+      } : null
+    }));
+    
+    res.json({
+      pets: petsWithStatus,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error fetching pets:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/pets/:id', async (req, res) => {
+  try {
+    const pet = await Pet.findById(req.params.id)
+      .populate('owner', 'name email username mobile')
+      .lean();
+    
+    if (!pet) {
+      return res.status(404).json({ message: 'Pet not found' });
+    }
+    
+    const registration = await RegistrationForm.findOne({ pet: pet._id }).lean();
+    
+    res.json({ pet, registration });
+  } catch (error) {
+    console.error('❌ Error fetching pet:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ==================== REGISTRATION MANAGEMENT ====================
+router.get('/registrations', async (req, res) => {
+  console.log('📋 Registrations requested');
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
+    
+    const [total, registrations] = await Promise.all([
+      RegistrationForm.countDocuments(),
+      RegistrationForm.find()
+        .populate({
+          path: 'pet',
+          populate: {
+            path: 'owner',
+            select: 'name email username mobile'
+          }
+        })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean()
+    ]);
+    
+    console.log(`✅ Found ${registrations.length} registrations (page ${page})`);
+    
+    res.json({
+      registrations,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error fetching registrations:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch registrations',
+      error: error.message 
+    });
+  }
+});
+
+router.get('/registrations/:id', async (req, res) => {
+  try {
+    const registration = await RegistrationForm.findById(req.params.id)
+      .populate({
+        path: 'pet',
+        populate: {
+          path: 'owner',
+          select: 'name email username mobile'
+        }
+      })
+      .lean();
+    
+    if (!registration) {
+      return res.status(404).json({ message: 'Registration not found' });
+    }
+    
+    res.json(registration);
+  } catch (error) {
+    console.error('❌ Error fetching registration:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -231,6 +293,7 @@ router.put('/pets/:id/registration-stage', async (req, res) => {
     }
     
     pet.registrationStage = stage;
+    
     const stageStatusMap = {
       0: 'not_started',
       1: 'documents_uploaded',
@@ -281,6 +344,12 @@ router.post('/pets/:id/license', async (req, res) => {
     
     await pet.save();
     
+    const registration = await RegistrationForm.findOne({ pet: pet._id });
+    if (registration) {
+      registration.isComplete = true;
+      await registration.save();
+    }
+    
     res.json({ message: 'License issued successfully', license: pet.license });
   } catch (error) {
     console.error('❌ Error issuing license:', error);
@@ -303,42 +372,18 @@ router.get('/pets/:id/license', async (req, res) => {
   }
 });
 
-// ==================== REGISTRATION DETAIL ====================
-router.get('/registrations/:id', async (req, res) => {
-  try {
-    const registration = await RegistrationForm.findById(req.params.id);
-    
-    if (!registration) {
-      return res.status(404).json({ message: 'Registration not found' });
-    }
-    
-    // Try to populate pet and owner
-    let populatedReg = registration.toObject();
-    try {
-      if (registration.pet) {
-        const pet = await Pet.findById(registration.pet).populate('owner', 'name email username mobile');
-        if (pet) {
-          populatedReg.pet = pet;
-        }
-      }
-    } catch (e) {
-      console.log('⚠️ Could not populate pet for registration:', registration._id);
-    }
-    
-    res.json(populatedReg);
-  } catch (error) {
-    console.error('❌ Error fetching registration:', error);
-    res.status(500).json({ message: error.message });
-  }
-});
-
 // ==================== DOCUMENT MANAGEMENT ====================
 router.get('/documents/pending', async (req, res) => {
   try {
     const registrations = await RegistrationForm.find({
       'documents.0': { $exists: true },
       registrationTriggered: false
-    });
+    })
+    .populate({
+      path: 'pet',
+      populate: { path: 'owner', select: 'name email' }
+    })
+    .lean();
     
     const pendingDocuments = registrations.filter(reg => 
       reg.documents && reg.documents.length < 4
@@ -347,7 +392,7 @@ router.get('/documents/pending', async (req, res) => {
     res.json(pendingDocuments);
   } catch (error) {
     console.error('❌ Error fetching pending documents:', error);
-    res.json([]);
+    res.status(500).json({ message: error.message });
   }
 });
 
@@ -362,7 +407,58 @@ router.get('/registrations/:id/documents', async (req, res) => {
     res.json(registration.documents || []);
   } catch (error) {
     console.error('❌ Error fetching documents:', error);
-    res.json([]);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ==================== REGISTRATION TRIGGER ====================
+router.post('/registrations/:id/trigger', async (req, res) => {
+  try {
+    const registration = await RegistrationForm.findById(req.params.id);
+    
+    if (!registration) {
+      return res.status(404).json({ message: 'Registration not found' });
+    }
+    
+    if (registration.registrationTriggered) {
+      return res.status(400).json({ message: 'Registration already triggered' });
+    }
+    
+    registration.registrationTriggered = true;
+    registration.registrationTriggeredAt = new Date();
+    registration.isComplete = true;
+    await registration.save();
+    
+    res.json({ 
+      message: 'Registration triggered successfully!',
+      registration 
+    });
+  } catch (error) {
+    console.error('❌ Error triggering registration:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ==================== REGISTRATION COMPLETE TOGGLE ====================
+router.put('/registrations/:id/complete', async (req, res) => {
+  try {
+    const { isComplete } = req.body;
+    const registration = await RegistrationForm.findById(req.params.id);
+    
+    if (!registration) {
+      return res.status(404).json({ message: 'Registration not found' });
+    }
+    
+    registration.isComplete = isComplete;
+    await registration.save();
+    
+    res.json({ 
+      message: `Registration ${isComplete ? 'marked as complete' : 'marked as incomplete'}`,
+      registration 
+    });
+  } catch (error) {
+    console.error('❌ Error updating registration status:', error);
+    res.status(500).json({ message: error.message });
   }
 });
 
