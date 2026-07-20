@@ -95,6 +95,18 @@ mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB Connected Successfully'))
   .catch(err => console.error('MongoDB Error:', err));
 
+  process.on('unhandledRejection', (err) => {
+  console.error('💥 Unhandled Rejection:', err);
+  console.error('Stack:', err.stack);
+});
+
+// Catch uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('💥 Uncaught Exception:', err);
+  console.error('Stack:', err.stack);
+});
+
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/pets', require('./routes/pets'));
@@ -111,6 +123,15 @@ app.get('/api/test-cors', (req, res) => {
     origin: req.headers.origin,
     method: req.method,
     timestamp: new Date().toISOString()
+  });
+});
+
+app.use((err, req, res, next) => {
+  console.error('🔥 Global error handler caught:', err);
+  console.error('Stack:', err.stack);
+  res.status(500).json({ 
+    error: 'Internal server error',
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
 });
 
