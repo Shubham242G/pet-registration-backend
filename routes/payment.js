@@ -28,6 +28,34 @@ try {
   razorpay = null;
 }
 
+// ─── STRICT PRICE VALIDATION FUNCTION ──────────────────────────────────
+function getExpectedPrice(city) {
+  const VALID_CITIES = ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad'];
+  const cityLower = city?.toLowerCase() || '';
+  
+  // ❌ BLOCK invalid cities
+  if (!VALID_CITIES.includes(cityLower)) {
+    throw new Error(`Invalid city: ${city}. No price configured.`);
+  }
+  
+  let basePrice = 0;
+  
+  if (['ghaziabad', 'gurgaon'].includes(cityLower)) {
+    basePrice = 1500;
+  } else if (['delhi', 'noida'].includes(cityLower)) {
+    basePrice = 799;
+  } else if (cityLower === 'faridabad') {
+    basePrice = 1799;
+  }
+  
+  if (basePrice === 0) {
+    throw new Error(`No price configured for city: ${city}`);
+  }
+  
+  // Add 18% GST
+  return basePrice * 1.18;
+}
+
 // ─── SEND PAYMENT RECEIPT ──────────────────────────────────────────────
 async function sendPaymentReceipt(user, pet, paymentDetails) {
   const { amount, paymentId, city, tagDeliveryOption, tagDeliveryCost } = paymentDetails;
@@ -97,7 +125,7 @@ router.post('/create-order', auth, async (req, res) => {
     }
 
     const parsedAmount = parseFloat(amount);
-    console.log(`💰 Amount: ${amount} -> ${parsedAmount}`);
+    console.log(`💰 Amount received: ${amount} -> ${parsedAmount}`);
     
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
       console.error(`❌ Invalid amount: ${amount}`);
@@ -113,7 +141,24 @@ router.post('/create-order', auth, async (req, res) => {
       return res.status(404).json({ success: false, error: 'Pet not found' });
     }
 
-    console.log(`✅ Pet found: ${pet.name}`);
+    console.log(`✅ Pet found: ${pet.name}, City: ${pet.city}`);
+
+    // ✅ STRICT PRICE VALIDATION - BLOCK wrong prices
+    const expectedPrice = getExpectedPrice(pet.city);
+    const tolerance = 1; // Allow ₹1 tolerance for rounding
+    
+    if (Math.abs(parsedAmount - expectedPrice) > tolerance) {
+      console.error(`❌ PRICE MISMATCH: Received ₹${parsedAmount}, Expected ₹${expectedPrice} for city ${pet.city}`);
+      return res.status(400).json({ 
+        success: false, 
+        error: `Invalid amount for ${pet.city}. Expected ₹${expectedPrice.toFixed(2)}. Please contact support.`,
+        details: {
+          received: parsedAmount,
+          expected: expectedPrice,
+          city: pet.city
+        }
+      });
+    }
 
     await Pet.findByIdAndUpdate(petId, {
       'tagDelivery.option': tagDeliveryOption || 'collect_from_municipal',
@@ -141,9 +186,11 @@ router.post('/create-order', auth, async (req, res) => {
         petId,
         petName: petName || pet.name,
         userId: userId.toString(),
-        city: pet.city || "other",
+        city: pet.city || "ghaziabad",
         tagDeliveryOption: tagDeliveryOption || "collect_from_municipal",
         tagDeliveryCost: tagDeliveryCost || 0,
+        verifiedPrice: finalAmount,
+        expectedPrice: expectedPrice,
       },
     };
 
@@ -166,14 +213,10 @@ router.post('/create-order', auth, async (req, res) => {
   } catch (error) {
     console.log("========== RAZORPAY ERROR ==========");
     console.error(error);
-    console.error("statusCode:", error.statusCode);
-    console.error("error:", error.error);
-    console.error("message:", error.message);
-    console.error("stack:", error.stack);
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message || 'Failed to create order',
       statusCode: error.statusCode,
       error: error.error,
     });
@@ -345,9 +388,9 @@ router.post('/test-receipt', auth, async (req, res) => {
     }
     
     const paymentDetails = {
-      amount: pet.paymentAmount || 999,
+      amount: pet.paymentAmount || 1500,
       paymentId: pet.paymentId || 'TEST-123',
-      city: pet.city || 'delhi',
+      city: pet.city || 'ghaziabad',
       tagDeliveryOption: pet.tagDelivery?.option || 'collect_from_municipal',
       tagDeliveryCost: pet.tagDelivery?.cost || 0,
     };

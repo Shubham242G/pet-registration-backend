@@ -20,7 +20,8 @@ const petSchema = new mongoose.Schema({
   city: { 
     type: String, 
     enum: ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad'],
-    default: 'other'
+    required: true,
+    default: 'gurgaon'
   },
 
   // ✅ Common Document fields
