@@ -18,7 +18,7 @@ async function sendOTPviaWhatsApp(phone, otp, name = "Tailio User") {
     console.log(`📱 Sending OTP to ${cleanPhone}: ${otp}`);
     
     const data = {
-      template_name: "tailio_otp_verification",
+      template_name: "shubham_bill_template",
       phone: cleanPhone,
       name: name,
       otp: otp
@@ -61,6 +61,7 @@ async function sendPaymentReceiptWhatsApp(phone, petName, amount, paymentId, cit
     
     const formattedAmount = `₹${Number(amount).toFixed(2)}`;
     
+    // ✅ Use the correct city name mapping
     const cityNames = {
       ghaziabad: 'Ghaziabad',
       delhi: 'Delhi',
@@ -71,47 +72,38 @@ async function sendPaymentReceiptWhatsApp(phone, petName, amount, paymentId, cit
     };
     const cityDisplay = cityNames[city] || city || 'Not specified';
     
-    const currentDate = new Date();
-    const dateStr = currentDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-    const timeStr = currentDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    // ✅ Generate a proper order ID (use paymentId or timestamp)
+    const orderID = paymentId || `ORD${Date.now().toString().slice(-6)}`;
     
-    const tagDeliveryDisplay = tagDeliveryOption === 'deliver_to_home' 
-      ? `Deliver to Home (₹${tagDeliveryCost || 0})` 
-      : 'Collect from Municipal Office';
-    
-    console.log(`📱 Sending payment receipt to ${cleanPhone} using invoice_razorpay template`);
+    console.log(`📱 Sending payment receipt to ${cleanPhone}`);
     console.log(`📝 Template variables:`, {
+      orderID: orderID,
+      orderAmount: formattedAmount,
       name: "Pet Parent",
-      amount: formattedAmount,
-      pet_name: petName,
-      city: cityDisplay,
-      date: dateStr,
-      time: timeStr,
-      payment_id: paymentId || 'N/A',
-      tag_delivery: tagDeliveryDisplay
+      city: cityDisplay
     });
     
-    // ✅ Using the correct endpoint: /sendTemplate (not /sendMessage)
-    // Variables format depends on your template structure
-    // Option 1: Numbered variables {{1}}, {{2}}, {{3}}, etc.
+    // ✅ Match your template structure EXACTLY
     const data = {
-      template_name: "invoice_razorpay",
+      template_name: "invoice_razorpay", // Your template name
       phone: cleanPhone,
-      variables: {
-        "1": "Pet Parent",
-        "2": formattedAmount,
-        "3": petName,
-        "4": cityDisplay,
-        "5": dateStr,
-        "6": timeStr,
-        "7": paymentId || 'N/A',
-        "8": tagDeliveryDisplay
-      }
+      // ✅ Option 1: If your template uses NAMED variables (recommended)
+      orderID: orderID,
+      orderAmount: formattedAmount,
+      name: "Pet Parent",
+      city: cityDisplay
+      // OR ✅ Option 2: If your template uses NUMBERED variables
+      // variables: {
+      //   "1": orderID,
+      //   "2": formattedAmount,
+      //   "3": "Pet Parent",
+      //   "4": cityDisplay
+      // }
     };
 
     const response = await axios({
       method: 'post',
-      url: `${BASE_URL}/sendTemplate?apikey=${API_KEY}`, // ✅ Correct endpoint
+      url: `${BASE_URL}/sendTemplate?apikey=${API_KEY}`,
       headers: {
         'Content-Type': 'application/json'
       },
@@ -124,38 +116,36 @@ async function sendPaymentReceiptWhatsApp(phone, petName, amount, paymentId, cit
     if (response.data && response.data.status === 200 && response.data.error === false) {
       return { success: true, data: response.data };
     } else {
-      // If numbered variables don't work, try named variables
-      console.log('⚠️ Numbered variables failed, trying named variables...');
+      // Try numbered variables as fallback
+      console.log('⚠️ Named variables failed, trying numbered variables...');
       
-      const namedData = {
+      const numberedData = {
         template_name: "invoice_razorpay",
         phone: cleanPhone,
-        customer_name: "Pet Parent",
-        amount: formattedAmount,
-        pet_name: petName,
-        city: cityDisplay,
-        date: dateStr,
-        time: timeStr,
-        payment_id: paymentId || 'N/A',
-        tag_delivery: tagDeliveryDisplay
+        variables: {
+          "1": orderID,
+          "2": formattedAmount,
+          "3": "Pet Parent",
+          "4": cityDisplay
+        }
       };
       
-      const namedResponse = await axios({
+      const numberedResponse = await axios({
         method: 'post',
         url: `${BASE_URL}/sendTemplate?apikey=${API_KEY}`,
         headers: {
           'Content-Type': 'application/json'
         },
-        data: namedData,
+        data: numberedData,
         timeout: 15000
       });
       
-      console.log("✅ WhatsApp receipt response (named):", namedResponse.data);
+      console.log("✅ WhatsApp receipt response (numbered):", numberedResponse.data);
       
-      if (namedResponse.data && namedResponse.data.status === 200 && namedResponse.data.error === false) {
-        return { success: true, data: namedResponse.data };
+      if (numberedResponse.data && numberedResponse.data.status === 200 && numberedResponse.data.error === false) {
+        return { success: true, data: numberedResponse.data };
       } else {
-        return { success: false, error: namedResponse.data?.message || "API returned error" };
+        return { success: false, error: numberedResponse.data?.message || "API returned error" };
       }
     }
   } catch (error) {
