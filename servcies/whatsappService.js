@@ -16,21 +16,17 @@ async function sendOTPviaWhatsApp(phone, otp, name = "Tailio User") {
     
     console.log(`📱 Sending OTP to ${cleanPhone}: ${otp}`);
     
-    // ✅ CORRECT: Using variables object with numbered parameters
+    // ✅ Using the ORIGINAL format that worked before
     const data = {
       template_name: "tailio_otp_verification",
       phone: cleanPhone,
-      variables: {
-        "1": name,
-        "2": otp,
-        "3": "Tailio",
-        "4": "5 minutes"
-      }
+      otp: otp,  // Top-level field
+      name: name // Top-level field
     };
 
     const response = await axios({
       method: 'post',
-      url: `${BASE_URL}/sendTemplate?apikey=${API_KEY}`, // ✅ Changed to sendTemplate
+      url: `${BASE_URL}/sendAuthTemplate?apikey=${API_KEY}`,  // ✅ Original endpoint
       headers: {
         'Content-Type': 'application/json'
       },

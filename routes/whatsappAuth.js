@@ -2,7 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const OTP = require('../models/OTP');
-const { sendOTPviaWhatsApp } = require('../services/whatsappService'); // ✅ FIXED: services (not servcies)
+const { sendOTPviaWhatsApp } = require('../servcies/whatsappService');
 const router = express.Router();
 
 // Helper to format phone number
@@ -40,7 +40,7 @@ router.post('/send-otp', async (req, res) => {
     
     const result = await sendOTPviaWhatsApp(cleanedNumber, otpCode);
     
-    if (result.success && result.data && !result.data.error) {
+    if (result.success) {
       return res.json({ 
         success: true, 
         message: 'OTP sent to your WhatsApp' 
@@ -89,8 +89,7 @@ router.post('/verify-otp', async (req, res) => {
         { expiresIn: '7d' }
       );
       
-      // Calculate registration fee based on city (correct prices)
-      let userRegistrationFee = 942.82; // default
+      let userRegistrationFee = 942.82;
       if (user.city === 'ghaziabad') {
         userRegistrationFee = 1532.82;
       } else if (user.city && ['delhi', 'noida', 'gurgaon'].includes(user.city)) {
@@ -172,11 +171,9 @@ router.post('/complete-registration', async (req, res) => {
       }
     }
     
-    // Determine pricing tier based on city
     const selectedCity = city || 'other';
     const pricingTier = selectedCity === 'ghaziabad' ? 'ghaziabad' : 'standard';
     
-    // Calculate registration fee based on city (correct prices)
     let finalRegistrationFee = registrationFee;
     if (!finalRegistrationFee) {
       if (selectedCity === 'ghaziabad') {
@@ -184,7 +181,7 @@ router.post('/complete-registration', async (req, res) => {
       } else if (['delhi', 'noida', 'gurgaon'].includes(selectedCity)) {
         finalRegistrationFee = 942.82;
       } else {
-        finalRegistrationFee = 942.82; // default
+        finalRegistrationFee = 942.82;
       }
     }
     
