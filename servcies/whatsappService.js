@@ -1,11 +1,10 @@
-// backend/services/whatsappService.js
 const axios = require('axios');
 
 const BASE_URL = "https://api.wapp.biz/api/external";
 const API_KEY = process.env.WAPP_BIZ_API_KEY;
 
 /**
- * Send OTP via WhatsApp using template
+ * Send OTP via WhatsApp using tailio_otp_verification template
  */
 async function sendOTPviaWhatsApp(phone, otp, name = "Tailio User") {
   try {
@@ -17,16 +16,21 @@ async function sendOTPviaWhatsApp(phone, otp, name = "Tailio User") {
     
     console.log(`📱 Sending OTP to ${cleanPhone}: ${otp}`);
     
+    // ✅ CORRECT: Using variables object with numbered parameters
     const data = {
-      template_name: "shubham_bill_template",
+      template_name: "tailio_otp_verification",
       phone: cleanPhone,
-      name: name,
-      otp: otp
+      variables: {
+        "1": name,
+        "2": otp,
+        "3": "Tailio",
+        "4": "5 minutes"
+      }
     };
 
     const response = await axios({
       method: 'post',
-      url: `${BASE_URL}/sendAuthTemplate?apikey=${API_KEY}`,
+      url: `${BASE_URL}/sendTemplate?apikey=${API_KEY}`, // ✅ Changed to sendTemplate
       headers: {
         'Content-Type': 'application/json'
       },
@@ -48,8 +52,7 @@ async function sendOTPviaWhatsApp(phone, otp, name = "Tailio User") {
 }
 
 /**
- * Send payment receipt via WhatsApp using invoice_razorpay template
- * ✅ Uses the approved template with /sendTemplate endpoint
+ * Send payment receipt via WhatsApp using shubham_bill_template
  */
 async function sendPaymentReceiptWhatsApp(phone, petName, amount, paymentId, city, tagDeliveryOption, tagDeliveryCost) {
   try {
@@ -61,7 +64,6 @@ async function sendPaymentReceiptWhatsApp(phone, petName, amount, paymentId, cit
     
     const formattedAmount = `₹${Number(amount).toFixed(2)}`;
     
-    // ✅ Use the correct city name mapping
     const cityNames = {
       ghaziabad: 'Ghaziabad',
       delhi: 'Delhi',
@@ -72,33 +74,26 @@ async function sendPaymentReceiptWhatsApp(phone, petName, amount, paymentId, cit
     };
     const cityDisplay = cityNames[city] || city || 'Not specified';
     
-    // ✅ Generate a proper order ID (use paymentId or timestamp)
     const orderID = paymentId || `ORD${Date.now().toString().slice(-6)}`;
     
     console.log(`📱 Sending payment receipt to ${cleanPhone}`);
     console.log(`📝 Template variables:`, {
       orderID: orderID,
       orderAmount: formattedAmount,
-      name: "Pet Parent",
+      name: petName || "Pet Parent",
       city: cityDisplay
     });
     
-    // ✅ Match your template structure EXACTLY
+    // ✅ Correct receipt template with 4 parameters
     const data = {
-      template_name: "invoice_razorpay", // Your template name
+      template_name: "shubham_bill_template",
       phone: cleanPhone,
-      // ✅ Option 1: If your template uses NAMED variables (recommended)
-      orderID: orderID,
-      orderAmount: formattedAmount,
-      name: "Pet Parent",
-      city: cityDisplay
-      // OR ✅ Option 2: If your template uses NUMBERED variables
-      // variables: {
-      //   "1": orderID,
-      //   "2": formattedAmount,
-      //   "3": "Pet Parent",
-      //   "4": cityDisplay
-      // }
+      variables: {
+        "1": orderID,
+        "2": formattedAmount,
+        "3": petName || "Pet Parent",
+        "4": cityDisplay
+      }
     };
 
     const response = await axios({
@@ -116,37 +111,7 @@ async function sendPaymentReceiptWhatsApp(phone, petName, amount, paymentId, cit
     if (response.data && response.data.status === 200 && response.data.error === false) {
       return { success: true, data: response.data };
     } else {
-      // Try numbered variables as fallback
-      console.log('⚠️ Named variables failed, trying numbered variables...');
-      
-      const numberedData = {
-        template_name: "invoice_razorpay",
-        phone: cleanPhone,
-        variables: {
-          "1": orderID,
-          "2": formattedAmount,
-          "3": "Pet Parent",
-          "4": cityDisplay
-        }
-      };
-      
-      const numberedResponse = await axios({
-        method: 'post',
-        url: `${BASE_URL}/sendTemplate?apikey=${API_KEY}`,
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        data: numberedData,
-        timeout: 15000
-      });
-      
-      console.log("✅ WhatsApp receipt response (numbered):", numberedResponse.data);
-      
-      if (numberedResponse.data && numberedResponse.data.status === 200 && numberedResponse.data.error === false) {
-        return { success: true, data: numberedResponse.data };
-      } else {
-        return { success: false, error: numberedResponse.data?.message || "API returned error" };
-      }
+      return { success: false, error: response.data?.message || "API returned error" };
     }
   } catch (error) {
     console.error("❌ WhatsApp receipt error:", error.response?.data || error.message);

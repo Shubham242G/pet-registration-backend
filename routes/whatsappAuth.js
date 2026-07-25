@@ -2,7 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const OTP = require('../models/OTP');
-const { sendOTPviaWhatsApp } = require('../servcies/whatsappService');
+const { sendOTPviaWhatsApp } = require('../services/whatsappService'); // ✅ FIXED: services (not servcies)
 const router = express.Router();
 
 // Helper to format phone number
