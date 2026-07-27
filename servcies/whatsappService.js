@@ -115,7 +115,49 @@ async function sendPaymentReceiptWhatsApp(phone, petName, amount, paymentId, cit
   }
 }
 
+
+async function sendWhatsAppMessage(phone, message) {
+  try {
+    let cleanPhone = phone.toString().replace(/\D/g, '');
+    if (cleanPhone.length === 10) {
+      cleanPhone = `91${cleanPhone}`;
+    }
+    
+    console.log(`📱 Sending WhatsApp message to ${cleanPhone}`);
+    
+    // Use the Wapp.biz API to send a text message
+    // Note: You may need to create a template for this
+    // For now, we'll use the existing OTP template as a fallback
+    
+    const data = {
+      template_name: "tailio_otp_verification",
+      phone: cleanPhone,
+      name: "Tailio Bot",
+      otp: message.substring(0, 100) // Truncate if needed
+    };
+
+    const response = await axios({
+      method: 'post',
+      url: `${BASE_URL}/sendAuthTemplate?apikey=${API_KEY}`,
+      headers: { 'Content-Type': 'application/json' },
+      data: data,
+      timeout: 15000
+    });
+
+    if (response.data && response.data.status === 200 && response.data.error === false) {
+      return { success: true, data: response.data };
+    } else {
+      return { success: false, error: response.data?.message || "API returned error" };
+    }
+  } catch (error) {
+    console.error("❌ WhatsApp send error:", error.response?.data || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+
 module.exports = { 
   sendOTPviaWhatsApp,
-  sendPaymentReceiptWhatsApp
+  sendPaymentReceiptWhatsApp,
+  sendWhatsAppMessage,
 };
