@@ -1,7 +1,7 @@
 // routes/bot.js
 const express = require('express');
 const router = express.Router();
-const BotService = require('../services/botService');
+const BotService = require('../servcies/botService');
 const BotSession = require('../models/BotSession');
 const User = require('../models/User');
 const { auth, requireRole } = require('../middleware/auth');
