@@ -62,12 +62,13 @@ function hasAllDocuments(pet, registrationForm) {
 }
 
 // Get registration status
+// routes/registrationForms.js - Upload route with admin bypass
 router.post('/:petId/documents', auth, async (req, res) => {
   try {
     const { documentName, fileData, fileName, fileSize, mimeType } = req.body;
     
     console.log('📄 Uploading document:', documentName, 'for pet:', req.params.petId);
-    console.log('📄 Request body:', { documentName, fileName, fileSize, mimeType });
+    console.log('📄 User role:', req.user.role);
     
     // Validate required fields
     if (!documentName) {
@@ -93,14 +94,30 @@ router.post('/:petId/documents', auth, async (req, res) => {
       });
     }
     
-    const pet = await Pet.findOne({ 
-      _id: req.params.petId, 
-      owner: req.user._id 
-    });
+    // ✅ ALLOW ADMIN TO ACCESS ANY PET
+    let pet;
+    if (req.user.role === 'admin') {
+      // Admin can access any pet
+      pet = await Pet.findById(req.params.petId);
+      console.log('🔍 Admin accessing pet:', pet ? pet._id : 'Not found');
+    } else {
+      // Regular user can only access their own pets
+      pet = await Pet.findOne({ 
+        _id: req.params.petId, 
+        owner: req.user._id 
+      });
+    }
     
     if (!pet) {
-      return res.status(404).json({ message: 'Pet not found' });
+      console.log(`❌ Pet not found: ${req.params.petId}`);
+      return res.status(404).json({ 
+        message: 'Pet not found',
+        petId: req.params.petId,
+        userId: req.user._id
+      });
     }
+    
+    console.log('✅ Pet found:', pet.name, 'Owner:', pet.owner);
     
     // ✅ ALLOW optional documents - don't reject if not in required list
     const requiredDocs = getRequiredDocumentNames(pet);
@@ -108,11 +125,9 @@ router.post('/:petId/documents', auth, async (req, res) => {
     // List of ALL allowed document names (including optional ones)
     const allAllowedDocs = [
       ...requiredDocs,
-      // Optional documents that can be uploaded
       'vaccinationCard', // Optional for Ghaziabad/Noida
     ];
     
-    // Check if document is allowed (either required or optional)
     if (!allAllowedDocs.includes(documentName)) {
       return res.status(400).json({ 
         message: `Invalid document name: ${documentName}. Allowed: ${allAllowedDocs.join(', ')}` 
@@ -137,7 +152,6 @@ router.post('/:petId/documents', auth, async (req, res) => {
     );
     
     if (existingDocIndex !== -1) {
-      // Update existing document
       registrationForm.documents[existingDocIndex] = {
         documentName,
         fileData,
@@ -147,7 +161,6 @@ router.post('/:petId/documents', auth, async (req, res) => {
         uploadedAt: new Date()
       };
     } else {
-      // Add new document
       registrationForm.documents.push({
         documentName,
         fileData,
@@ -173,7 +186,6 @@ router.post('/:petId/documents', auth, async (req, res) => {
     // Check if all required docs are uploaded
     const hasAllDocs = hasAllDocuments(pet, registrationForm);
     
-    // If all documents uploaded, update pet status
     if (hasAllDocs && pet.registrationStatus === 'not_started') {
       pet.registrationStatus = 'documents_uploaded';
       pet.registrationStage = 1;
@@ -198,6 +210,7 @@ router.post('/:petId/documents', auth, async (req, res) => {
         isComplete: registrationForm.isComplete
       }
     });
+    
   } catch (error) {
     console.error('Upload error:', error);
     res.status(500).json({ 
