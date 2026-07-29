@@ -1,7 +1,8 @@
+// server.js
 const express = require('express');
-const mongoose = require('mongoose');
+const mongoose = require('mongoose');  // ✅ Added
 const cors = require('cors');
-const path = require('path');
+const path = require('path');          // ✅ Added
 require('dotenv').config();
 
 const app = express();
@@ -29,7 +30,6 @@ app.use((req, res, next) => {
   console.log(`🔍 CORS Check - Origin: ${origin}`);
   console.log(`🔍 Request: ${req.method} ${req.path}`);
   
-  // Handle preflight requests
   if (req.method === 'OPTIONS') {
     console.log('🔍 Handling OPTIONS preflight request');
     res.header('Access-Control-Allow-Origin', origin || '*');
@@ -40,7 +40,6 @@ app.use((req, res, next) => {
     return res.status(200).end();
   }
   
-  // Check if origin is allowed
   let isAllowed = false;
   
   if (!origin) {
@@ -90,22 +89,20 @@ app.use((req, res, next) => {
   next();
 });
 
-// Database
+// Database connection
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB Connected Successfully'))
   .catch(err => console.error('MongoDB Error:', err));
 
-  process.on('unhandledRejection', (err) => {
+process.on('unhandledRejection', (err) => {
   console.error('💥 Unhandled Rejection:', err);
   console.error('Stack:', err.stack);
 });
 
-// Catch uncaught exceptions
 process.on('uncaughtException', (err) => {
   console.error('💥 Uncaught Exception:', err);
   console.error('Stack:', err.stack);
 });
-
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -117,7 +114,6 @@ app.use('/api/payment', require('./routes/payment'));
 app.use('/api/blog', require('./routes/blog'));
 app.use('/api/bot', require('./routes/bot'));
 
-
 // Test endpoint to verify CORS is working
 app.get('/api/test-cors', (req, res) => {
   res.json({ 
@@ -128,31 +124,25 @@ app.get('/api/test-cors', (req, res) => {
   });
 });
 
-app.use((err, req, res, next) => {
-  console.error('🔥 Global error handler caught:', err);
-  console.error('Stack:', err.stack);
-  res.status(500).json({ 
-    error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined
-  });
-});
-
 // 404 handler
 app.use((req, res) => {
+  console.log(`❌ 404 - Route not found: ${req.method} ${req.path}`);
   res.status(404).json({ message: 'Route not found' });
 });
 
 // Global error handler
 app.use((err, req, res, next) => {
-  console.error('Server Error:', err.stack);
-  res.status(500).json({ message: 'Server error', error: process.env.NODE_ENV === 'development' ? err.message : {} });
+  console.error('🔥 Server Error:', err.stack);
+  res.status(500).json({ 
+    message: 'Server error', 
+    error: process.env.NODE_ENV === 'development' ? err.message : {} 
+  });
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`Uploads directory: ${path.join(__dirname, 'uploads')}`);
+  console.log('✅ Razorpay initialized successfully');
 });
-
-console.log('✅ Razorpay initialized successfully');
