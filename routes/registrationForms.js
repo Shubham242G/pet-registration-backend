@@ -334,25 +334,32 @@ router.post('/:petId/trigger-registration', auth, async (req, res) => {
       });
     }
     
+    // ✅ CORRECT PRICING BASED ON CITY
+    const cityPrices = {
+      ghaziabad: 1770,   // 1500 + 18% GST
+      gurgaon: 1770,     // 1500 + 18% GST
+      delhi: 942.82,     // 799 + 18% GST
+      noida: 942.82,     // 799 + 18% GST
+      faridabad: 2122.82 // 1799 + 18% GST
+    };
+    
     // Calculate amount based on city
-    let amount = 999; // default
-    if (['ghaziabad', 'noida'].includes(pet.city)) {
-      amount = 500;
-    } else if (pet.city === 'faridabad') {
-      amount = 750;
-    }
+    let amount = cityPrices[pet.city] || 999; // fallback to 999 if city not found
     
     // Add delivery cost if applicable
     if (tagDeliveryOption === 'deliver_to_home' && tagDeliveryCost) {
       amount += tagDeliveryCost;
     }
     
+    // Use paidAmount from frontend if provided, otherwise use calculated amount
+    const finalAmount = paidAmount || amount;
+    
     // Update registration form
     registrationForm.registrationTriggered = true;
     registrationForm.registrationTriggeredAt = new Date();
     registrationForm.isComplete = true;
     registrationForm.paymentStatus = 'completed';
-    registrationForm.paymentAmount = paidAmount || amount;
+    registrationForm.paymentAmount = finalAmount;
     
     await registrationForm.save();
     
@@ -362,7 +369,7 @@ router.post('/:petId/trigger-registration', auth, async (req, res) => {
     pet.registrationStatus = 'form_submitted';
     pet.registrationStage = 2;
     pet.paymentStatus = 'completed';
-    pet.paymentAmount = paidAmount || amount;
+    pet.paymentAmount = finalAmount;
     pet.paymentDate = new Date();
     
     if (tagDeliveryOption) {

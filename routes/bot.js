@@ -5,53 +5,79 @@ const BotService = require('../servcies/botService');
 const BotSession = require('../models/BotSession');
 const User = require('../models/User');
 const { auth, requireRole } = require('../middleware/auth');
+const { sendWhatsAppTextMessage } = require('../services/whatsappService');
 
-// ─── WEBHOOK - Receive messages from Wapp.biz ────────────────────────────
+// ─── WAPP.BIZ WEBHOOK - Receive messages ──────────────────────────────────
 router.post('/webhook', async (req, res) => {
   try {
-    console.log('📨 Bot webhook received:', JSON.stringify(req.body, null, 2));
+    console.log('📨 Wapp.biz webhook received:');
+    console.log('📨 Body:', JSON.stringify(req.body, null, 2));
     
-    const { phone, message, media_url } = req.body;
+    // Wapp.biz sends messages in different formats
+    const { phone, message, media_url, event, data } = req.body;
     
-    if (!phone) {
+    // Extract phone number and message from various formats
+    let phoneNumber = phone || data?.phone || req.body?.phone;
+    let messageText = message || data?.message || req.body?.message;
+    let mediaUrl = media_url || data?.media_url || req.body?.media_url;
+    
+    if (!phoneNumber) {
+      console.error('❌ No phone number in webhook payload');
       return res.status(400).json({ error: 'Phone number required' });
     }
     
-    // Process the message
-    const response = await BotService.processMessage(phone, message, media_url);
+    // Clean phone number
+    const cleanPhone = phoneNumber.toString().replace(/\D/g, '');
     
-    // Send response back to WhatsApp
-    // You'll need to implement sendWhatsAppResponse using your existing service
-    await sendWhatsAppResponse(phone, response);
+    console.log(`📱 Processing message from ${cleanPhone}:`, messageText || 'Media message');
     
-    res.status(200).json({ success: true });
+    // Process the message through bot service
+    const response = await BotService.processMessage(cleanPhone, messageText || '', mediaUrl);
+    
+    // Send response back via WhatsApp using the correct endpoint
+    if (response) {
+      await sendWhatsAppTextMessage(cleanPhone, response);
+    }
+    
+    return res.status(200).json({ 
+      success: true, 
+      message: 'Message processed'
+    });
+    
   } catch (error) {
     console.error('❌ Bot webhook error:', error);
-    res.status(500).json({ error: error.message });
+    // Always return 200 to Wapp.biz
+    return res.status(200).json({ 
+      success: false, 
+      error: error.message 
+    });
   }
 });
 
-// ─── SEND WHATSAPP RESPONSE ──────────────────────────────────────────────
-async function sendWhatsAppResponse(phone, message) {
+// ─── WEBHOOK VERIFICATION ──────────────────────────────────────────────────
+router.get('/webhook', (req, res) => {
   try {
-    // Use your existing WhatsApp service
-    const { sendWhatsAppMessage } = require('../services/whatsappService');
+    const { hub_mode, hub_verify_token, hub_challenge } = req.query;
     
-    // Clean phone number
-    let cleanPhone = phone.toString().replace(/\D/g, '');
-    if (cleanPhone.length === 10) {
-      cleanPhone = `91${cleanPhone}`;
+    console.log('🔍 Webhook verification request:');
+    console.log('  - hub_mode:', hub_mode);
+    console.log('  - hub_verify_token:', hub_verify_token);
+    console.log('  - hub_challenge:', hub_challenge);
+    
+    const verifyToken = process.env.WAPP_BIZ_WEBHOOK_VERIFY_TOKEN || 'tailio_webhook_verify';
+    
+    if (hub_mode === 'subscribe' && hub_verify_token === verifyToken) {
+      console.log('✅ Webhook verified successfully!');
+      return res.status(200).send(hub_challenge);
+    } else {
+      console.log('❌ Webhook verification failed');
+      return res.status(403).send('Verification failed');
     }
-    
-    // Use the sendTextMessage function (you may need to implement this)
-    // For now, we'll use the existing sendPaymentReceiptWhatsApp as a template
-    const result = await sendWhatsAppMessage(cleanPhone, message);
-    return result;
   } catch (error) {
-    console.error('❌ Error sending WhatsApp response:', error);
-    return { success: false, error: error.message };
+    console.error('❌ Webhook verification error:', error);
+    return res.status(500).send('Internal server error');
   }
-}
+});
 
 // ─── GET BOT SESSION STATUS ──────────────────────────────────────────────
 router.get('/session/:phone', auth, async (req, res) => {
@@ -85,13 +111,8 @@ router.get('/admin/bot-users', auth, requireRole('admin'), async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
-    
     const result = await BotService.getBotUsers(page, limit);
-    
-    res.json({
-      success: true,
-      ...result
-    });
+    res.json({ success: true, ...result });
   } catch (error) {
     console.error('❌ Error fetching bot users:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -103,38 +124,27 @@ router.get('/admin/analytics', auth, requireRole('admin'), async (req, res) => {
   try {
     const stats = await BotService.getAdminStats();
     
-    // City distribution
     const cityStats = await BotSession.aggregate([
       { $match: { 'userData.city': { $ne: null } } },
       { $group: { _id: '$userData.city', count: { $sum: 1 } } },
       { $sort: { count: -1 } }
     ]);
     
-    // Step distribution
     const stepStats = await BotSession.aggregate([
       { $group: { _id: '$currentStep', count: { $sum: 1 } } },
       { $sort: { count: -1 } }
     ]);
     
-    // Daily stats (last 7 days)
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     
     const dailyStats = await BotSession.aggregate([
-      { 
-        $match: { 
-          startedAt: { $gte: sevenDaysAgo } 
-        } 
-      },
+      { $match: { startedAt: { $gte: sevenDaysAgo } } },
       {
         $group: {
-          _id: { 
-            $dateToString: { format: '%Y-%m-%d', date: '$startedAt' }
-          },
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$startedAt' } },
           count: { $sum: 1 },
-          converted: { 
-            $sum: { $cond: ['$isConverted', 1, 0] } 
-          }
+          converted: { $sum: { $cond: ['$isConverted', 1, 0] } }
         }
       },
       { $sort: { _id: 1 } }
@@ -142,12 +152,7 @@ router.get('/admin/analytics', auth, requireRole('admin'), async (req, res) => {
     
     res.json({
       success: true,
-      analytics: {
-        ...stats,
-        cityDistribution: cityStats,
-        stepDistribution: stepStats,
-        dailyStats: dailyStats
-      }
+      analytics: { ...stats, cityDistribution: cityStats, stepDistribution: stepStats, dailyStats }
     });
   } catch (error) {
     console.error('❌ Error fetching bot analytics:', error);
@@ -167,7 +172,6 @@ router.post('/admin/convert/:sessionId', auth, requireRole('admin'), async (req,
       return res.status(400).json({ success: false, error: 'Already converted' });
     }
     
-    // Check if session has enough data
     if (!session.userData.name || !session.petData.name) {
       return res.status(400).json({ 
         success: false, 
@@ -175,7 +179,6 @@ router.post('/admin/convert/:sessionId', auth, requireRole('admin'), async (req,
       });
     }
     
-    // Convert to full user
     const user = await BotService.createUserAccount(session);
     const pet = await BotService.createPet(session, user);
     await BotService.createRegistrationForm(session, pet);
@@ -191,11 +194,7 @@ router.post('/admin/convert/:sessionId', auth, requireRole('admin'), async (req,
       message: 'User converted successfully',
       userId: user._id,
       petId: pet._id,
-      user: {
-        name: user.name,
-        whatsappNumber: user.whatsappNumber,
-        city: user.city
-      }
+      user: { name: user.name, whatsappNumber: user.whatsappNumber, city: user.city }
     });
   } catch (error) {
     console.error('❌ Error converting bot user:', error);
@@ -210,11 +209,7 @@ router.delete('/admin/session/:sessionId', auth, requireRole('admin'), async (re
     if (!session) {
       return res.status(404).json({ success: false, error: 'Session not found' });
     }
-    
-    res.json({
-      success: true,
-      message: 'Bot session deleted successfully'
-    });
+    res.json({ success: true, message: 'Bot session deleted successfully' });
   } catch (error) {
     console.error('❌ Error deleting bot session:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -229,7 +224,6 @@ router.get('/admin/session/:sessionId', auth, requireRole('admin'), async (req, 
       return res.status(404).json({ success: false, error: 'Session not found' });
     }
     
-    // Get user and pet if converted
     let user = null;
     let pet = null;
     if (session.userId) {
@@ -259,25 +253,31 @@ router.get('/admin/session/:sessionId', auth, requireRole('admin'), async (req, 
 router.post('/test-webhook', async (req, res) => {
   try {
     const { phoneNumber, message } = req.body;
-    
     if (!phoneNumber) {
       return res.status(400).json({ error: 'Phone number required' });
     }
-    
-    const response = await BotService.processMessage(
-      phoneNumber, 
-      message || 'start'
-    );
-    
-    res.json({
-      success: true,
-      message: 'Test webhook processed',
-      response
-    });
+    const response = await BotService.processMessage(phoneNumber, message || 'start');
+    res.json({ success: true, message: 'Test webhook processed', response });
   } catch (error) {
     console.error('❌ Test webhook error:', error);
     res.status(500).json({ error: error.message });
   }
+});
+
+// ─── WEBHOOK STATUS ──────────────────────────────────────────────────────
+router.get('/status', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Bot webhook is active',
+    webhookUrl: `${req.protocol}://${req.get('host')}/api/bot/webhook`,
+    endpoints: {
+      webhook: 'POST /api/bot/webhook',
+      verify: 'GET /api/bot/webhook',
+      status: 'GET /api/bot/status',
+      session: 'GET /api/bot/session/:phone',
+      test: 'POST /api/bot/test-webhook'
+    }
+  });
 });
 
 module.exports = router;

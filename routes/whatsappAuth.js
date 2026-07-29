@@ -107,7 +107,7 @@ router.post('/verify-otp', async (req, res) => {
           username: user.username || user.name,
           name: user.name,
           role: user.role,
-          city: user.city || 'other',
+          city: user.city || 'ghaziabad',
           pricingTier: user.pricingTier || 'standard',
           registrationFee: userRegistrationFee
         }
@@ -171,7 +171,11 @@ router.post('/complete-registration', async (req, res) => {
       }
     }
     
-    const selectedCity = city || 'other';
+    // ✅ FIX: Use 'ghaziabad' as default instead of 'other'
+    const selectedCity = city || 'ghaziabad';
+    const validCities = ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad'];
+    const finalCity = validCities.includes(selectedCity) ? selectedCity : 'ghaziabad';
+    
     const pricingTier = selectedCity === 'ghaziabad' ? 'ghaziabad' : 'standard';
     
     let finalRegistrationFee = registrationFee;
@@ -185,13 +189,14 @@ router.post('/complete-registration', async (req, res) => {
       }
     }
     
+    // ✅ FIX: Ensure city is a valid enum value
     user = new User({
       whatsappNumber,
       name: name,
       username: username || name.toLowerCase().replace(/\s/g, '') + Math.floor(Math.random() * 1000),
       isVerified: true,
       lastLoginAt: new Date(),
-      city: selectedCity,
+      city: finalCity, // ✅ Always a valid city
       pricingTier: pricingTier,
       registrationFee: finalRegistrationFee
     });

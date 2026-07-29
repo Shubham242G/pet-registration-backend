@@ -23,7 +23,7 @@ const userSchema = new mongoose.Schema({
   city: { 
     type: String, 
     enum: ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad'],
-    default: 'ghaziabad' // ✅ Changed from 'other' to a valid city
+    default: 'ghaziabad' 
   },
   pricingTier: { 
     type: String, 
