@@ -30,7 +30,7 @@ try {
 
 // ─── STRICT PRICE VALIDATION FUNCTION ──────────────────────────────────
 function getExpectedPrice(city) {
-  const VALID_CITIES = ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad'];
+  const VALID_CITIES = ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad', 'jaipur'];
   const cityLower = city?.toLowerCase() || '';
   
   // ❌ BLOCK invalid cities
@@ -44,7 +44,7 @@ function getExpectedPrice(city) {
     basePrice = 1500;
   } else if (['delhi', 'noida'].includes(cityLower)) {
     basePrice = 799;
-  } else if (cityLower === 'faridabad') {
+  } else if (cityLower === 'faridabad' || cityLower === 'jaipur') {
     basePrice = 1799;
   }
   

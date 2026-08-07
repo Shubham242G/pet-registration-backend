@@ -19,7 +19,7 @@ const petSchema = new mongoose.Schema({
   // City where pet is being registered
   city: { 
     type: String, 
-    enum: ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad'],
+    enum: ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad', 'jaipur'],
     required: true,
     default: 'gurgaon'
   },

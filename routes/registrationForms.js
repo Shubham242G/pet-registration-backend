@@ -6,12 +6,14 @@ const RegistrationForm = require('../models/RegsitrationForm');
 const { auth } = require('../middleware/auth');
 
 // Helper function to get required document names for each city
+// Helper function to get required document names for each city
 function getRequiredDocumentNames(pet) {
   const isGurgaon = pet.city === 'gurgaon';
   const isFaridabad = pet.city === 'faridabad';
   const isGhaziabadNoida = ['ghaziabad', 'noida'].includes(pet.city);
+  const isJaipur = pet.city === 'jaipur';
   const ageInYears = (pet.ageYears || 0) + (pet.ageMonths || 0) / 12;
-  
+
   // Faridabad docs
   if (isFaridabad) {
     return [
@@ -23,15 +25,25 @@ function getRequiredDocumentNames(pet) {
       'microchipDetails'
     ];
   }
-  
+
+  // ✅ JAIPUR DOCS - 4 required documents
+  if (isJaipur) {
+    return [
+      'idProof',                    // ID Proof
+      'vaccinationCard',            // Vaccination Card
+      'antiRabiesCertificate',      // Rabies Vaccination Certificate
+      'petPhoto'                    // Photo of Pet
+    ];
+  }
+
   // Base docs for all cities
   const docs = [
-    'antiRabiesCertificate', 
-    'idProof', 
-    'residenceProof', 
+    'antiRabiesCertificate',
+    'idProof',
+    'residenceProof',
     'ownerWithPetPhoto'
   ];
-  
+
   // Gurgaon additional docs
   if (isGurgaon) {
     docs.push('petPhoto', 'vaccinationCard', 'vaccinationCertificate');
@@ -39,13 +51,12 @@ function getRequiredDocumentNames(pet) {
       docs.push('sterilizationCertificate');
     }
   }
-  
+
   // Ghaziabad & Noida additional docs
   if (isGhaziabadNoida) {
     docs.push('ownerPhoto', 'petPhoto', 'ownerSignature');
-    // Note: vaccinationCard is already in base docs
   }
-  
+
   return docs;
 }
 
@@ -66,10 +77,10 @@ function hasAllDocuments(pet, registrationForm) {
 router.post('/:petId/documents', auth, async (req, res) => {
   try {
     const { documentName, fileData, fileName, fileSize, mimeType } = req.body;
-    
+
     console.log('📄 Uploading document:', documentName, 'for pet:', req.params.petId);
     console.log('📄 User role:', req.user.role);
-    
+
     // Validate required fields
     if (!documentName) {
       return res.status(400).json({ message: 'documentName is required' });
@@ -86,14 +97,14 @@ router.post('/:petId/documents', auth, async (req, res) => {
     if (!mimeType) {
       return res.status(400).json({ message: 'mimeType is required' });
     }
-    
+
     // Validate fileData format
     if (typeof fileData !== 'string' || !fileData.startsWith('data:')) {
-      return res.status(400).json({ 
-        message: 'Invalid fileData format. Must be a base64 string starting with "data:"' 
+      return res.status(400).json({
+        message: 'Invalid fileData format. Must be a base64 string starting with "data:"'
       });
     }
-    
+
     // ✅ ALLOW ADMIN TO ACCESS ANY PET
     let pet;
     if (req.user.role === 'admin') {
@@ -102,38 +113,38 @@ router.post('/:petId/documents', auth, async (req, res) => {
       console.log('🔍 Admin accessing pet:', pet ? pet._id : 'Not found');
     } else {
       // Regular user can only access their own pets
-      pet = await Pet.findOne({ 
-        _id: req.params.petId, 
-        owner: req.user._id 
+      pet = await Pet.findOne({
+        _id: req.params.petId,
+        owner: req.user._id
       });
     }
-    
+
     if (!pet) {
       console.log(`❌ Pet not found: ${req.params.petId}`);
-      return res.status(404).json({ 
+      return res.status(404).json({
         message: 'Pet not found',
         petId: req.params.petId,
         userId: req.user._id
       });
     }
-    
+
     console.log('✅ Pet found:', pet.name, 'Owner:', pet.owner);
-    
+
     // ✅ ALLOW optional documents - don't reject if not in required list
     const requiredDocs = getRequiredDocumentNames(pet);
-    
+
     // List of ALL allowed document names (including optional ones)
     const allAllowedDocs = [
       ...requiredDocs,
       'vaccinationCard', // Optional for Ghaziabad/Noida
     ];
-    
+
     if (!allAllowedDocs.includes(documentName)) {
-      return res.status(400).json({ 
-        message: `Invalid document name: ${documentName}. Allowed: ${allAllowedDocs.join(', ')}` 
+      return res.status(400).json({
+        message: `Invalid document name: ${documentName}. Allowed: ${allAllowedDocs.join(', ')}`
       });
     }
-    
+
     // Get or create registration form
     let registrationForm = await RegistrationForm.findOne({ pet: pet._id });
     if (!registrationForm) {
@@ -145,12 +156,12 @@ router.post('/:petId/documents', auth, async (req, res) => {
         paymentStatus: 'pending'
       });
     }
-    
+
     // Check if document already exists
     const existingDocIndex = registrationForm.documents.findIndex(
       doc => doc.documentName === documentName
     );
-    
+
     if (existingDocIndex !== -1) {
       registrationForm.documents[existingDocIndex] = {
         documentName,
@@ -170,9 +181,9 @@ router.post('/:petId/documents', auth, async (req, res) => {
         uploadedAt: new Date()
       });
     }
-    
+
     await registrationForm.save();
-    
+
     // Also update in Pet model
     const updateData = {
       [`${documentName}.fileData`]: fileData,
@@ -182,16 +193,16 @@ router.post('/:petId/documents', auth, async (req, res) => {
       [`${documentName}.uploadedAt`]: new Date()
     };
     await Pet.findByIdAndUpdate(pet._id, updateData);
-    
+
     // Check if all required docs are uploaded
     const hasAllDocs = hasAllDocuments(pet, registrationForm);
-    
+
     if (hasAllDocs && pet.registrationStatus === 'not_started') {
       pet.registrationStatus = 'documents_uploaded';
       pet.registrationStage = 1;
       await pet.save();
     }
-    
+
     res.json({
       success: true,
       message: 'Document uploaded successfully',
@@ -210,10 +221,10 @@ router.post('/:petId/documents', auth, async (req, res) => {
         isComplete: registrationForm.isComplete
       }
     });
-    
+
   } catch (error) {
     console.error('Upload error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       message: error.message || 'Failed to upload document'
     });
   }
@@ -225,31 +236,31 @@ router.post('/:petId/documents', auth, async (req, res) => {
 router.delete('/:petId/documents/:documentName', auth, async (req, res) => {
   try {
     const { petId, documentName } = req.params;
-    
+
     console.log('🗑️ Deleting document:', documentName);
-    
-    const pet = await Pet.findOne({ 
-      _id: petId, 
-      owner: req.user._id 
+
+    const pet = await Pet.findOne({
+      _id: petId,
+      owner: req.user._id
     });
-    
+
     if (!pet) {
       return res.status(404).json({ message: 'Pet not found' });
     }
-    
+
     // Get registration form
     const registrationForm = await RegistrationForm.findOne({ pet: pet._id });
     if (!registrationForm) {
       return res.status(404).json({ message: 'Registration form not found' });
     }
-    
+
     // Remove document from registration form
     registrationForm.documents = registrationForm.documents.filter(
       doc => doc.documentName !== documentName
     );
-    
+
     await registrationForm.save();
-    
+
     // Also remove from Pet model
     const updateData = {
       [`${documentName}.fileData`]: null,
@@ -259,19 +270,19 @@ router.delete('/:petId/documents/:documentName', auth, async (req, res) => {
       [`${documentName}.uploadedAt`]: null
     };
     await Pet.findByIdAndUpdate(pet._id, updateData);
-    
+
     // Check if all required docs are uploaded
     const requiredDocs = getRequiredDocumentNames(pet);
     const hasAllDocs = hasAllDocuments(pet, registrationForm);
-    
+
     // Update pet status if documents are no longer complete
     if (!hasAllDocs && pet.registrationStatus === 'documents_uploaded') {
       pet.registrationStatus = 'not_started';
       pet.registrationStage = 0;
       await pet.save();
     }
-    
-    res.json({ 
+
+    res.json({
       success: true,
       message: 'Document deleted successfully',
       registration: {
@@ -293,76 +304,77 @@ router.post('/:petId/trigger-registration', auth, async (req, res) => {
   try {
     const { petId } = req.params;
     const { paymentVerified, paidAmount, tagDeliveryOption, tagDeliveryCost } = req.body;
-    
-    const pet = await Pet.findOne({ 
-      _id: petId, 
-      owner: req.user._id 
+
+    const pet = await Pet.findOne({
+      _id: petId,
+      owner: req.user._id
     });
-    
+
     if (!pet) {
       return res.status(404).json({ message: 'Pet not found' });
     }
-    
+
     // Get registration form
     const registrationForm = await RegistrationForm.findOne({ pet: pet._id });
     if (!registrationForm) {
       return res.status(404).json({ message: 'Registration form not found' });
     }
-    
+
     // Check if all required docs are uploaded
     const requiredDocs = getRequiredDocumentNames(pet);
     const hasAllDocs = hasAllDocuments(pet, registrationForm);
-    
+
     if (!hasAllDocs) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
         message: `All required documents must be uploaded`,
         uploadedCount: registrationForm.documents.length,
         requiredCount: requiredDocs.length,
         requiredDocuments: requiredDocs,
         uploadedDocuments: registrationForm.documents.map(d => d.documentName),
-        missingDocuments: requiredDocs.filter(doc => 
+        missingDocuments: requiredDocs.filter(doc =>
           !registrationForm.documents.some(d => d.documentName === doc)
         )
       });
     }
-    
+
     if (!paymentVerified) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: 'Payment verification required' 
+        message: 'Payment verification required'
       });
     }
-    
+
     // ✅ CORRECT PRICING BASED ON CITY
     const cityPrices = {
-      ghaziabad: 1770,   // 1500 + 18% GST
-      gurgaon: 1770,     // 1500 + 18% GST
-      delhi: 942.82,     // 799 + 18% GST
-      noida: 942.82,     // 799 + 18% GST
-      faridabad: 2122.82 // 1799 + 18% GST
+      ghaziabad: 1770,
+      gurgaon: 1770,
+      delhi: 942.82,
+      noida: 942.82,
+      faridabad: 2122.82,
+      jaipur: 2122.82
     };
-    
+
     // Calculate amount based on city
     let amount = cityPrices[pet.city] || 999; // fallback to 999 if city not found
-    
+
     // Add delivery cost if applicable
     if (tagDeliveryOption === 'deliver_to_home' && tagDeliveryCost) {
       amount += tagDeliveryCost;
     }
-    
+
     // Use paidAmount from frontend if provided, otherwise use calculated amount
     const finalAmount = paidAmount || amount;
-    
+
     // Update registration form
     registrationForm.registrationTriggered = true;
     registrationForm.registrationTriggeredAt = new Date();
     registrationForm.isComplete = true;
     registrationForm.paymentStatus = 'completed';
     registrationForm.paymentAmount = finalAmount;
-    
+
     await registrationForm.save();
-    
+
     // Update pet
     pet.registrationTriggered = true;
     pet.registrationTriggeredAt = new Date();
@@ -371,16 +383,16 @@ router.post('/:petId/trigger-registration', auth, async (req, res) => {
     pet.paymentStatus = 'completed';
     pet.paymentAmount = finalAmount;
     pet.paymentDate = new Date();
-    
+
     if (tagDeliveryOption) {
       pet.tagDelivery = {
         option: tagDeliveryOption,
         cost: tagDeliveryCost || 0
       };
     }
-    
+
     await pet.save();
-    
+
     res.json({
       success: true,
       message: 'Registration submitted successfully! You will receive the license within 7-10 business days.',
@@ -410,16 +422,16 @@ router.post('/:petId/trigger-registration', auth, async (req, res) => {
 router.get('/requirements/:city', auth, async (req, res) => {
   try {
     const { city } = req.params;
-    
+
     const tempPet = { city };
     if (city === 'gurgaon') {
       tempPet.ageYears = 5;
       tempPet.ageMonths = 0;
     }
-    
+
     const requiredDocs = getRequiredDocumentNames(tempPet);
     const requiredCount = requiredDocs.length;
-    
+
     const displayNames = {
       antiRabiesCertificate: 'Anti-Rabies Certificate',
       idProof: 'ID Proof',
@@ -437,13 +449,13 @@ router.get('/requirements/:city', auth, async (req, res) => {
       petPhotographs: 'Pet Photographs',
       microchipDetails: 'Microchip Details'
     };
-    
+
     const documents = requiredDocs.map(doc => ({
       key: doc,
       label: displayNames[doc] || doc,
       required: true
     }));
-    
+
     res.json({
       city,
       requiredCount,
