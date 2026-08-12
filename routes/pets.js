@@ -21,7 +21,7 @@ router.get('/', auth, async (req, res) => {
         '-vaccinationCertificate.fileData -sterilizationCertificate.fileData ' +
         '-ownerPhoto.fileData -ownerSignature.fileData -vaccinationBook.fileData ' +
         '-proofOfIdentity.fileData -proofOfAddress.fileData ' +
-        '-vaccinationRecord.fileData -petPhotographs.fileData -microchipDetails.fileData'
+        '-vaccinationRecord.fileData -petPhotographs.fileData'
       );
     res.json(pets);
   } catch (error) {

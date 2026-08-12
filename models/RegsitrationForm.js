@@ -25,7 +25,6 @@ const documentStatusSchema = new mongoose.Schema({
       'proofOfAddress',
       'vaccinationRecord',
       'petPhotographs',
-      'microchipDetails',
     ],
     required: true,
   },

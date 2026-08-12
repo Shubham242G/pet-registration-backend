@@ -22,7 +22,6 @@ function getRequiredDocumentNames(pet) {
       'vaccinationRecord',
       'petPhotographs',
       'sterilizationCertificate',
-      'microchipDetails'
     ];
   }
 
@@ -447,7 +446,6 @@ router.get('/requirements/:city', auth, async (req, res) => {
       proofOfAddress: 'Proof of Address',
       vaccinationRecord: 'Vaccination Record',
       petPhotographs: 'Pet Photographs',
-      microchipDetails: 'Microchip Details'
     };
 
     const documents = requiredDocs.map(doc => ({

@@ -127,13 +127,6 @@ const petSchema = new mongoose.Schema({
     mimeType: { type: String },
     uploadedAt: { type: Date, default: Date.now }
   },
-  microchipDetails: {
-    fileData: { type: String },
-    fileName: { type: String },
-    fileSize: { type: Number },
-    mimeType: { type: String },
-    uploadedAt: { type: Date, default: Date.now }
-  },
 
   // Tag Delivery
   tagDelivery: {
@@ -249,7 +242,6 @@ petSchema.virtual('uploadedDocumentsCount').get(function () {
       'vaccinationRecord',
       'petPhotographs',
       'sterilizationCertificate',
-      'microchipDetails'
     ];
   }
   
@@ -299,7 +291,6 @@ petSchema.virtual('hasAllDocuments').get(function () {
       'vaccinationRecord',
       'petPhotographs',
       'sterilizationCertificate',
-      'microchipDetails'
     ];
     return faridabadDocs.every(field => this[field]?.fileData);
   }
@@ -345,7 +336,6 @@ petSchema.virtual('documents').get(function () {
       'vaccinationRecord',
       'petPhotographs',
       'sterilizationCertificate',
-      'microchipDetails'
     ];
   }
   
