@@ -56,7 +56,7 @@ userSchema.virtual('calculatedRegistrationFee').get(function() {
     gurgaon: 1500,
     delhi: 799,
     noida: 799,
-    faridabad: 1799,
+    faridabad: 799,
   };
   return cityPricing[this.city] || 1500; // ✅ Default to Ghaziabad price
 });

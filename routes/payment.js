@@ -42,9 +42,9 @@ function getExpectedPrice(city) {
   
   if (['ghaziabad', 'gurgaon'].includes(cityLower)) {
     basePrice = 1500;
-  } else if (['delhi', 'noida'].includes(cityLower)) {
+  } else if (['delhi', 'noida', 'faridabad'].includes(cityLower)) {
     basePrice = 799;
-  } else if (cityLower === 'faridabad' || cityLower === 'jaipur') {
+  } else if (cityLower === 'jaipur') {
     basePrice = 1799;
   }
   
