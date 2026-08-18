@@ -37,14 +37,16 @@ function getExpectedPrice(city) {
     throw new Error(`Invalid city: ${city}. No price configured.`);
   }
   
-  // ✅ DIRECT FINAL PRICES - NO CALCULATION NEEDED
+  // ✅ DIRECT FINAL PRICES INCLUDING GST
   let finalPrice = 0;
   
   if (cityLower === 'ghaziabad') {
     finalPrice = 1599;
   } else if (cityLower === 'gurgaon') {
-    finalPrice = 1499;
-  } else if (['delhi', 'noida', 'faridabad', 'jaipur', 'mumbai', 'thane'].includes(cityLower)) {
+    finalPrice = 1699;
+  } else if (cityLower === 'jaipur') {
+    finalPrice = 1699;
+  } else if (['delhi', 'noida', 'faridabad', 'mumbai', 'thane'].includes(cityLower)) {
     finalPrice = 999;
   }
   
@@ -52,7 +54,7 @@ function getExpectedPrice(city) {
     throw new Error(`No price configured for city: ${city}`);
   }
   
-  // ✅ Return the final price directly (no GST calculation)
+  // ✅ Return the final price directly
   return finalPrice;
 }
 

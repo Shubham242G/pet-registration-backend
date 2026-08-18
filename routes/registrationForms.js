@@ -358,15 +358,15 @@ router.post('/:petId/trigger-registration', auth, async (req, res) => {
 
     // ✅ CORRECT PRICING BASED ON CITY
     const cityPrices = {
-      ghaziabad: 1599,
-      gurgaon: 1499,
-      delhi: 999,
-      noida: 999,
-      faridabad: 999,
-      jaipur: 999,
-      mumbai: 999,
-      thane: 999,
-    };
+  ghaziabad: 1599,
+  gurgaon: 1699,
+  delhi: 999,
+  noida: 999,
+  faridabad: 999,
+  jaipur: 1699,
+  mumbai: 999,
+  thane: 999,
+};
 
     // Calculate amount based on city
     let amount = cityPrices[pet.city] || 999;
