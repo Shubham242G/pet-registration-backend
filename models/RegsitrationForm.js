@@ -1,4 +1,3 @@
-// models/RegistrationForm.js
 const mongoose = require('mongoose');
 
 // Document sub-schema with Base64 storage
@@ -12,7 +11,7 @@ const documentStatusSchema = new mongoose.Schema({
       'residenceProof', 
       'ownerWithPetPhoto',
       'petPhoto',
-      'vaccinationCard',        // Used for ALL cities
+      'vaccinationCard',
       'vaccinationCertificate',
       'sterilizationCertificate',
       
@@ -25,6 +24,12 @@ const documentStatusSchema = new mongoose.Schema({
       'proofOfAddress',
       'vaccinationRecord',
       'petPhotographs',
+
+      // Mumbai & Thane docs
+      'aadharCard',
+      'residentialProof',
+      'petPhotograph',
+      'antiRabiesLeptoCertificate',
     ],
     required: true,
   },

@@ -1,4 +1,3 @@
-// routes/payment.js
 const express = require('express');
 const router = express.Router();
 const Razorpay = require('razorpay');
@@ -30,7 +29,7 @@ try {
 
 // ─── STRICT PRICE VALIDATION FUNCTION ──────────────────────────────────
 function getExpectedPrice(city) {
-  const VALID_CITIES = ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad', 'jaipur'];
+  const VALID_CITIES = ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad', 'jaipur', 'mumbai', 'thane'];
   const cityLower = city?.toLowerCase() || '';
   
   // ❌ BLOCK invalid cities
@@ -38,22 +37,23 @@ function getExpectedPrice(city) {
     throw new Error(`Invalid city: ${city}. No price configured.`);
   }
   
-  let basePrice = 0;
+  // ✅ DIRECT FINAL PRICES - NO CALCULATION NEEDED
+  let finalPrice = 0;
   
-  if (['ghaziabad', 'gurgaon'].includes(cityLower)) {
-    basePrice = 1500;
-  } else if (['delhi', 'noida', 'faridabad'].includes(cityLower)) {
-    basePrice = 799;
-  } else if (cityLower === 'jaipur') {
-    basePrice = 1799;
+  if (cityLower === 'ghaziabad') {
+    finalPrice = 1599;
+  } else if (cityLower === 'gurgaon') {
+    finalPrice = 1499;
+  } else if (['delhi', 'noida', 'faridabad', 'jaipur', 'mumbai', 'thane'].includes(cityLower)) {
+    finalPrice = 999;
   }
   
-  if (basePrice === 0) {
+  if (finalPrice === 0) {
     throw new Error(`No price configured for city: ${city}`);
   }
   
-  // Add 18% GST
-  return basePrice * 1.18;
+  // ✅ Return the final price directly (no GST calculation)
+  return finalPrice;
 }
 
 // ─── SEND PAYMENT RECEIPT ──────────────────────────────────────────────
@@ -409,5 +409,3 @@ router.post('/test-receipt', auth, async (req, res) => {
 });
 
 module.exports = router;
-
-

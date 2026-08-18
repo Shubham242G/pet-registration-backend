@@ -6,13 +6,25 @@ const RegistrationForm = require('../models/RegsitrationForm');
 const { auth } = require('../middleware/auth');
 
 // Helper function to get required document names for each city
-// Helper function to get required document names for each city
 function getRequiredDocumentNames(pet) {
   const isGurgaon = pet.city === 'gurgaon';
   const isFaridabad = pet.city === 'faridabad';
   const isGhaziabadNoida = ['ghaziabad', 'noida'].includes(pet.city);
   const isJaipur = pet.city === 'jaipur';
+  const isMumbaiThane = ['mumbai', 'thane'].includes(pet.city);
   const ageInYears = (pet.ageYears || 0) + (pet.ageMonths || 0) / 12;
+
+  // ✅ Mumbai & Thane - 6 required documents (using existing fields)
+  if (isMumbaiThane) {
+    return [
+      'proofOfIdentity',          // Aadhar Card
+      'proofOfAddress',           // Residential Proof
+      'vaccinationCertificate',   // Vaccination Certificate
+      'petPhotographs',           // Pet Photograph
+      'ownerPhoto',               // Owner Photo
+      'antiRabiesCertificate'     // Anti-Rabies & Leptospirosis Certificate
+    ];
+  }
 
   // Faridabad docs
   if (isFaridabad) {
@@ -25,13 +37,13 @@ function getRequiredDocumentNames(pet) {
     ];
   }
 
-  // ✅ JAIPUR DOCS - 4 required documents
+  // Jaipur docs
   if (isJaipur) {
     return [
-      'idProof',                    // ID Proof
-      'vaccinationCard',            // Vaccination Card
-      'antiRabiesCertificate',      // Rabies Vaccination Certificate
-      'petPhoto'                    // Photo of Pet
+      'idProof',
+      'vaccinationCard',
+      'antiRabiesCertificate',
+      'petPhoto'
     ];
   }
 
@@ -346,16 +358,18 @@ router.post('/:petId/trigger-registration', auth, async (req, res) => {
 
     // ✅ CORRECT PRICING BASED ON CITY
     const cityPrices = {
-      ghaziabad: 1770,
-      gurgaon: 1770,
-      delhi: 942.82,
-      noida: 942.82,
-      faridabad: 2122.82,
-      jaipur: 2122.82
+      ghaziabad: 1599,
+      gurgaon: 1499,
+      delhi: 999,
+      noida: 999,
+      faridabad: 999,
+      jaipur: 999,
+      mumbai: 999,
+      thane: 999,
     };
 
     // Calculate amount based on city
-    let amount = cityPrices[pet.city] || 999; // fallback to 999 if city not found
+    let amount = cityPrices[pet.city] || 999;
 
     // Add delivery cost if applicable
     if (tagDeliveryOption === 'deliver_to_home' && tagDeliveryCost) {

@@ -1,4 +1,3 @@
-// models/Pet.js
 const mongoose = require('mongoose');
 
 const petSchema = new mongoose.Schema({
@@ -19,7 +18,7 @@ const petSchema = new mongoose.Schema({
   // City where pet is being registered
   city: { 
     type: String, 
-    enum: ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad', 'jaipur'],
+    enum: ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad', 'jaipur', 'mumbai', 'thane'],
     required: true,
     default: 'gurgaon'
   },
@@ -128,6 +127,36 @@ const petSchema = new mongoose.Schema({
     uploadedAt: { type: Date, default: Date.now }
   },
 
+  // ✅ Mumbai & Thane specific documents
+  aadharCard: {
+    fileData: { type: String },
+    fileName: { type: String },
+    fileSize: { type: Number },
+    mimeType: { type: String },
+    uploadedAt: { type: Date, default: Date.now }
+  },
+  residentialProof: {
+    fileData: { type: String },
+    fileName: { type: String },
+    fileSize: { type: Number },
+    mimeType: { type: String },
+    uploadedAt: { type: Date, default: Date.now }
+  },
+  petPhotograph: {
+    fileData: { type: String },
+    fileName: { type: String },
+    fileSize: { type: Number },
+    mimeType: { type: String },
+    uploadedAt: { type: Date, default: Date.now }
+  },
+  antiRabiesLeptoCertificate: {
+    fileData: { type: String },
+    fileName: { type: String },
+    fileSize: { type: Number },
+    mimeType: { type: String },
+    uploadedAt: { type: Date, default: Date.now }
+  },
+
   // Tag Delivery
   tagDelivery: {
     option: { 
@@ -215,7 +244,7 @@ petSchema.virtual('isSterilizationRequired').get(function () {
 
 // ✅ Check if tag delivery is available
 petSchema.virtual('isTagDeliveryAvailable').get(function () {
-  return ['gurgaon', 'ghaziabad', 'delhi', 'noida'].includes(this.city);
+  return ['gurgaon', 'ghaziabad', 'delhi', 'noida', 'mumbai', 'thane'].includes(this.city);
 });
 
 // ✅ Calculate uploaded documents count
@@ -223,6 +252,7 @@ petSchema.virtual('uploadedDocumentsCount').get(function () {
   const isGurgaon = this.city === 'gurgaon';
   const isFaridabad = this.city === 'faridabad';
   const isGhaziabadNoida = ['ghaziabad', 'noida'].includes(this.city);
+  const isMumbaiThane = ['mumbai', 'thane'].includes(this.city);
   
   let docFields = [
     'antiRabiesCertificate', 
@@ -249,6 +279,17 @@ petSchema.virtual('uploadedDocumentsCount').get(function () {
     docFields.push('ownerPhoto', 'ownerSignature');
   }
   
+  if (isMumbaiThane) {
+    docFields = [
+      'aadharCard',
+      'residentialProof',
+      'vaccinationCertificate',
+      'petPhotograph',
+      'ownerPhoto',
+      'antiRabiesLeptoCertificate'
+    ];
+  }
+  
   return docFields.filter(field => this[field]?.fileData).length;
 });
 
@@ -257,8 +298,13 @@ petSchema.virtual('requiredDocumentsCount').get(function () {
   const isGurgaon = this.city === 'gurgaon';
   const isFaridabad = this.city === 'faridabad';
   const isGhaziabadNoida = ['ghaziabad', 'noida'].includes(this.city);
+  const isMumbaiThane = ['mumbai', 'thane'].includes(this.city);
   
   if (isFaridabad) {
+    return 5;
+  }
+  
+  if (isMumbaiThane) {
     return 6;
   }
   
@@ -272,7 +318,7 @@ petSchema.virtual('requiredDocumentsCount').get(function () {
   }
   
   if (isGhaziabadNoida) {
-    count += 4; // ownerPhoto, petPhoto, ownerSignature, antiRabiesCertificate (already have 4 base)
+    count += 4;
   }
   
   return count;
@@ -283,6 +329,7 @@ petSchema.virtual('hasAllDocuments').get(function () {
   const isGurgaon = this.city === 'gurgaon';
   const isFaridabad = this.city === 'faridabad';
   const isGhaziabadNoida = ['ghaziabad', 'noida'].includes(this.city);
+  const isMumbaiThane = ['mumbai', 'thane'].includes(this.city);
   
   if (isFaridabad) {
     const faridabadDocs = [
@@ -293,6 +340,18 @@ petSchema.virtual('hasAllDocuments').get(function () {
       'sterilizationCertificate',
     ];
     return faridabadDocs.every(field => this[field]?.fileData);
+  }
+  
+  if (isMumbaiThane) {
+    const mumbaiThaneDocs = [
+      'aadharCard',
+      'residentialProof',
+      'vaccinationCertificate',
+      'petPhotograph',
+      'ownerPhoto',
+      'antiRabiesLeptoCertificate'
+    ];
+    return mumbaiThaneDocs.every(field => this[field]?.fileData);
   }
   
   const docFields = ['antiRabiesCertificate', 'idProof', 'residenceProof', 'ownerWithPetPhoto'];
@@ -317,6 +376,7 @@ petSchema.virtual('documents').get(function () {
   const isGurgaon = this.city === 'gurgaon';
   const isFaridabad = this.city === 'faridabad';
   const isGhaziabadNoida = ['ghaziabad', 'noida'].includes(this.city);
+  const isMumbaiThane = ['mumbai', 'thane'].includes(this.city);
   
   let docFields = [
     'antiRabiesCertificate', 
@@ -341,6 +401,17 @@ petSchema.virtual('documents').get(function () {
   
   if (isGhaziabadNoida) {
     docFields.push('ownerPhoto', 'ownerSignature');
+  }
+  
+  if (isMumbaiThane) {
+    docFields = [
+      'aadharCard',
+      'residentialProof',
+      'vaccinationCertificate',
+      'petPhotograph',
+      'ownerPhoto',
+      'antiRabiesLeptoCertificate'
+    ];
   }
   
   for (const field of docFields) {
