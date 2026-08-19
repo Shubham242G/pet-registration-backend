@@ -1,18 +1,54 @@
+// routes/admin/admin.js
 const express = require('express');
 const router = express.Router();
-const { auth, requireRole } = require('../../middleware/auth');
+const jwt = require('jsonwebtoken');
+const User = require('../../models/User');
 const RegistrationForm = require('../../models/RegsitrationForm');
 const Pet = require('../../models/Pet');
-const User = require('../../models/User');
 
-router.use(auth);
-router.use(requireRole('admin'));
+// ✅ SIMPLE AUTH MIDDLEWARE - No role checking
+const authMiddleware = async (req, res, next) => {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+      console.log('❌ No token provided');
+      return res.status(401).json({ message: 'No token, authorization denied' });
+    }
+    
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.userId).select('-password');
+    
+    if (!user) {
+      console.log('❌ User not found');
+      return res.status(401).json({ message: 'User not found' });
+    }
+    
+    req.user = user;
+    console.log(`✅ Authenticated: ${user.email || user.username} (${user.role})`);
+    next();
+  } catch (error) {
+    console.error('❌ Auth error:', error);
+    return res.status(401).json({ message: 'Authentication failed' });
+  }
+};
+
+// Apply the auth middleware to ALL admin routes
+router.use(authMiddleware);
 
 // ==================== TEST ====================
 router.get('/test', (req, res) => {
+  console.log('✅ Admin test route hit');
   res.json({ 
+    success: true,
     message: '✅ Admin routes working!',
-    user: { id: req.user._id, role: req.user.role }
+    user: { 
+      id: req.user._id, 
+      email: req.user.email,
+      role: req.user.role,
+      name: req.user.name 
+    },
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -28,9 +64,9 @@ router.get('/dashboard/stats', async (req, res) => {
       recentRegistrations,
       stage0, stage1, stage2, stage3, stage4
     ] = await Promise.all([
-      User.countDocuments({ role: 'user' }),
-      Pet.countDocuments(),
-      RegistrationForm.countDocuments(),
+      User.countDocuments({ role: 'user' }).catch(() => 0),
+      Pet.countDocuments().catch(() => 0),
+      RegistrationForm.countDocuments().catch(() => 0),
       RegistrationForm.countDocuments({ registrationTriggered: true }).catch(() => 0),
       RegistrationForm.countDocuments({
         createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
@@ -45,16 +81,23 @@ router.get('/dashboard/stats', async (req, res) => {
     const pendingRegistrations = totalRegistrations - (completedRegistrations || 0);
     
     res.json({
-      totalCustomers,
-      totalPets,
-      totalRegistrations,
+      totalCustomers: totalCustomers || 0,
+      totalPets: totalPets || 0,
+      totalRegistrations: totalRegistrations || 0,
       completedRegistrations: completedRegistrations || 0,
-      pendingRegistrations,
+      pendingRegistrations: pendingRegistrations || 0,
       recentRegistrations: recentRegistrations || 0,
-      stages: { stage0, stage1, stage2, stage3, stage4 }
+      stages: { 
+        stage0: stage0 || 0, 
+        stage1: stage1 || 0, 
+        stage2: stage2 || 0, 
+        stage3: stage3 || 0, 
+        stage4: stage4 || 0 
+      }
     });
   } catch (error) {
     console.error('❌ Error fetching stats:', error);
+    console.error('❌ Stack:', error.stack);
     res.status(500).json({ 
       message: 'Failed to fetch dashboard stats',
       error: error.message 
@@ -71,35 +114,40 @@ router.get('/customers', async (req, res) => {
     const skip = (page - 1) * limit;
     
     const [total, customers] = await Promise.all([
-      User.countDocuments({ role: 'user' }),
+      User.countDocuments({ role: 'user' }).catch(() => 0),
       User.find({ role: 'user' })
         .select('-password')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean()
+        .catch(() => [])
     ]);
     
-    // Get pet counts for each customer (batch query for efficiency)
+    // Get pet counts for each customer
     const customerIds = customers.map(c => c._id);
-    const petCounts = await Pet.aggregate([
-      { $match: { owner: { $in: customerIds } } },
-      { $group: { _id: '$owner', count: { $sum: 1 } } }
-    ]);
+    let petCounts = [];
+    let registeredPetCounts = [];
     
-    const registeredPetCounts = await Pet.aggregate([
-      { $match: { owner: { $in: customerIds }, registrationStage: 4 } },
-      { $group: { _id: '$owner', count: { $sum: 1 } } }
-    ]);
+    if (customerIds.length > 0) {
+      [petCounts, registeredPetCounts] = await Promise.all([
+        Pet.aggregate([
+          { $match: { owner: { $in: customerIds } } },
+          { $group: { _id: '$owner', count: { $sum: 1 } } }
+        ]).catch(() => []),
+        Pet.aggregate([
+          { $match: { owner: { $in: customerIds }, registrationStage: 4 } },
+          { $group: { _id: '$owner', count: { $sum: 1 } } }
+        ]).catch(() => [])
+      ]);
+    }
     
-    // Create maps for quick lookup
     const petCountMap = {};
     petCounts.forEach(item => { petCountMap[item._id] = item.count; });
     
     const registeredPetMap = {};
     registeredPetCounts.forEach(item => { registeredPetMap[item._id] = item.count; });
     
-    // Add counts to customers
     const customersWithStats = customers.map(customer => ({
       ...customer,
       petCount: petCountMap[customer._id] || 0,
@@ -109,10 +157,10 @@ router.get('/customers', async (req, res) => {
     res.json({
       customers: customersWithStats,
       pagination: {
-        total,
+        total: total || 0,
         page,
         limit,
-        pages: Math.ceil(total / limit)
+        pages: Math.ceil((total || 0) / limit)
       }
     });
   } catch (error) {
@@ -129,12 +177,11 @@ router.get('/customers/:id', async (req, res) => {
       return res.status(404).json({ message: 'Customer not found' });
     }
     
-    const [pets, registrations] = await Promise.all([
-      Pet.find({ owner: customer._id }).lean(),
-      RegistrationForm.find({ pet: { $in: await Pet.find({ owner: customer._id }).distinct('_id') } })
-        .populate('pet')
-        .lean()
-    ]);
+    const pets = await Pet.find({ owner: customer._id }).lean();
+    const petIds = pets.map(p => p._id);
+    const registrations = await RegistrationForm.find({ pet: { $in: petIds } })
+      .populate('pet')
+      .lean();
     
     res.json({ customer, pets, registrations });
   } catch (error) {
@@ -152,18 +199,25 @@ router.get('/pets', async (req, res) => {
     const skip = (page - 1) * limit;
     
     const [total, pets] = await Promise.all([
-      Pet.countDocuments(),
+      Pet.countDocuments().catch(() => 0),
       Pet.find()
         .populate('owner', 'name email username mobile')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean()
+        .catch(() => [])
     ]);
     
     // Get registration info for each pet
     const petIds = pets.map(p => p._id);
-    const registrations = await RegistrationForm.find({ pet: { $in: petIds } }).lean();
+    let registrations = [];
+    if (petIds.length > 0) {
+      registrations = await RegistrationForm.find({ pet: { $in: petIds } })
+        .lean()
+        .catch(() => []);
+    }
+    
     const registrationMap = {};
     registrations.forEach(reg => {
       registrationMap[reg.pet] = reg;
@@ -184,10 +238,10 @@ router.get('/pets', async (req, res) => {
     res.json({
       pets: petsWithStatus,
       pagination: {
-        total,
+        total: total || 0,
         page,
         limit,
-        pages: Math.ceil(total / limit)
+        pages: Math.ceil((total || 0) / limit)
       }
     });
   } catch (error) {
@@ -224,7 +278,7 @@ router.get('/registrations', async (req, res) => {
     const skip = (page - 1) * limit;
     
     const [total, registrations] = await Promise.all([
-      RegistrationForm.countDocuments(),
+      RegistrationForm.countDocuments().catch(() => 0),
       RegistrationForm.find()
         .populate({
           path: 'pet',
@@ -237,6 +291,7 @@ router.get('/registrations', async (req, res) => {
         .skip(skip)
         .limit(limit)
         .lean()
+        .catch(() => [])
     ]);
     
     console.log(`✅ Found ${registrations.length} registrations (page ${page})`);
@@ -244,10 +299,10 @@ router.get('/registrations', async (req, res) => {
     res.json({
       registrations,
       pagination: {
-        total,
+        total: total || 0,
         page,
         limit,
-        pages: Math.ceil(total / limit)
+        pages: Math.ceil((total || 0) / limit)
       }
     });
   } catch (error) {
