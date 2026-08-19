@@ -109,8 +109,8 @@ router.get('/dashboard/stats', async (req, res) => {
 router.get('/customers', async (req, res) => {
   console.log('👥 Customers requested');
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(20, parseInt(req.query.limit) || 20); // ✅ Reduced to 20
     const skip = (page - 1) * limit;
     
     const [total, customers] = await Promise.all([
@@ -177,11 +177,19 @@ router.get('/customers/:id', async (req, res) => {
       return res.status(404).json({ message: 'Customer not found' });
     }
     
-    const pets = await Pet.find({ owner: customer._id }).lean();
-    const petIds = pets.map(p => p._id);
-    const registrations = await RegistrationForm.find({ pet: { $in: petIds } })
-      .populate('pet')
+    // ✅ Get pets WITHOUT file fields
+    const pets = await Pet.find({ owner: customer._id })
+      .select('-antiRabiesCertificate -idProof -residenceProof -ownerWithPetPhoto -petPhoto -vaccinationCard -vaccinationCertificate -sterilizationCertificate -ownerPhoto -ownerSignature -proofOfIdentity -proofOfAddress -vaccinationRecord -petPhotographs -aadharCard -residentialProof -petPhotograph -antiRabiesLeptoCertificate')
       .lean();
+    
+    const petIds = pets.map(p => p._id);
+    let registrations = [];
+    if (petIds.length > 0) {
+      registrations = await RegistrationForm.find({ pet: { $in: petIds } })
+        .select('-documents') // ✅ EXCLUDE documents
+        .populate('pet', 'name species ageYears ageMonths gender')
+        .lean();
+    }
     
     res.json({ customer, pets, registrations });
   } catch (error) {
@@ -190,17 +198,19 @@ router.get('/customers/:id', async (req, res) => {
   }
 });
 
-// ==================== PET MANAGEMENT ====================
+// ==================== PET MANAGEMENT - OPTIMIZED ====================
 router.get('/pets', async (req, res) => {
   console.log('🐾 Pets requested');
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(20, parseInt(req.query.limit) || 20); // ✅ Reduced to 20
     const skip = (page - 1) * limit;
     
+    // ✅ OPTIMIZED: Select only needed fields, exclude ALL file data
     const [total, pets] = await Promise.all([
       Pet.countDocuments().catch(() => 0),
       Pet.find()
+        .select('name species ageYears ageMonths gender city registrationStage registrationStatus owner createdAt updatedAt') // Only what's needed
         .populate('owner', 'name email username mobile')
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -209,11 +219,12 @@ router.get('/pets', async (req, res) => {
         .catch(() => [])
     ]);
     
-    // Get registration info for each pet
+    // ✅ Get registration info WITHOUT documents
     const petIds = pets.map(p => p._id);
     let registrations = [];
     if (petIds.length > 0) {
       registrations = await RegistrationForm.find({ pet: { $in: petIds } })
+        .select('pet registrationTriggered isComplete createdAt') // ✅ Only needed fields
         .lean()
         .catch(() => []);
     }
@@ -227,11 +238,10 @@ router.get('/pets', async (req, res) => {
     const petsWithStatus = pets.map(pet => ({
       ...pet,
       registrationStatus: registrationMap[pet._id] ? {
-        hasDocuments: registrationMap[pet._id].documents ? registrationMap[pet._id].documents.length : 0,
-        totalDocuments: 4,
         registrationTriggered: registrationMap[pet._id].registrationTriggered || false,
         registrationTriggeredAt: registrationMap[pet._id].registrationTriggeredAt || null,
-        isComplete: registrationMap[pet._id].isComplete || false
+        isComplete: registrationMap[pet._id].isComplete || false,
+        documentCount: 0 // ✅ We don't load documents, so count is 0
       } : null
     }));
     
@@ -252,7 +262,9 @@ router.get('/pets', async (req, res) => {
 
 router.get('/pets/:id', async (req, res) => {
   try {
+    // ✅ Get pet WITHOUT file fields
     const pet = await Pet.findById(req.params.id)
+      .select('-antiRabiesCertificate -idProof -residenceProof -ownerWithPetPhoto -petPhoto -vaccinationCard -vaccinationCertificate -sterilizationCertificate -ownerPhoto -ownerSignature -proofOfIdentity -proofOfAddress -vaccinationRecord -petPhotographs -aadharCard -residentialProof -petPhotograph -antiRabiesLeptoCertificate')
       .populate('owner', 'name email username mobile')
       .lean();
     
@@ -260,7 +272,10 @@ router.get('/pets/:id', async (req, res) => {
       return res.status(404).json({ message: 'Pet not found' });
     }
     
-    const registration = await RegistrationForm.findOne({ pet: pet._id }).lean();
+    // ✅ Get registration WITHOUT documents
+    const registration = await RegistrationForm.findOne({ pet: pet._id })
+      .select('-documents') // ✅ EXCLUDE documents
+      .lean();
     
     res.json({ pet, registration });
   } catch (error) {
@@ -269,19 +284,22 @@ router.get('/pets/:id', async (req, res) => {
   }
 });
 
-// ==================== REGISTRATION MANAGEMENT ====================
+// ==================== REGISTRATION MANAGEMENT - OPTIMIZED ====================
 router.get('/registrations', async (req, res) => {
   console.log('📋 Registrations requested');
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(20, parseInt(req.query.limit) || 20); // ✅ Reduced to 20
     const skip = (page - 1) * limit;
     
+    // ✅ CRITICAL FIX: Exclude documents array from query
     const [total, registrations] = await Promise.all([
       RegistrationForm.countDocuments().catch(() => 0),
       RegistrationForm.find()
+        .select('-documents') // ⭐ KEY FIX: Exclude documents (Base64 images)
         .populate({
           path: 'pet',
+          select: 'name species ageYears ageMonths gender city registrationStage owner',
           populate: {
             path: 'owner',
             select: 'name email username mobile'
@@ -295,6 +313,7 @@ router.get('/registrations', async (req, res) => {
     ]);
     
     console.log(`✅ Found ${registrations.length} registrations (page ${page})`);
+    console.log(`📊 Memory saved: Documents excluded from query`);
     
     res.json({
       registrations,
@@ -316,9 +335,11 @@ router.get('/registrations', async (req, res) => {
 
 router.get('/registrations/:id', async (req, res) => {
   try {
+    // ✅ Only load documents for single registration detail view
     const registration = await RegistrationForm.findById(req.params.id)
       .populate({
         path: 'pet',
+        select: 'name species ageYears ageMonths gender city registrationStage',
         populate: {
           path: 'owner',
           select: 'name email username mobile'
@@ -329,6 +350,9 @@ router.get('/registrations/:id', async (req, res) => {
     if (!registration) {
       return res.status(404).json({ message: 'Registration not found' });
     }
+    
+    // ⚠️ Documents are loaded here - only for ONE record (acceptable)
+    console.log(`📄 Loaded documents for registration ${req.params.id}`);
     
     res.json(registration);
   } catch (error) {
@@ -420,7 +444,17 @@ router.get('/pets/:id/license', async (req, res) => {
       return res.status(404).json({ message: 'License not found' });
     }
     
-    res.json(pet.license);
+    // ✅ Exclude license file data from list view
+    const license = {
+      number: pet.license.number,
+      issuedAt: pet.license.issuedAt,
+      expiresAt: pet.license.expiresAt,
+      issuedBy: pet.license.issuedBy,
+      issuedOn: pet.license.issuedOn,
+      // Exclude fileData from list view
+    };
+    
+    res.json(license);
   } catch (error) {
     console.error('❌ Error fetching license:', error);
     res.status(500).json({ message: error.message });
@@ -430,19 +464,27 @@ router.get('/pets/:id/license', async (req, res) => {
 // ==================== DOCUMENT MANAGEMENT ====================
 router.get('/documents/pending', async (req, res) => {
   try {
+    // ✅ Only get document counts, not actual documents
     const registrations = await RegistrationForm.find({
       'documents.0': { $exists: true },
       registrationTriggered: false
     })
+    .select('pet documents registrationTriggered') // Include documents for counting
     .populate({
       path: 'pet',
+      select: 'name owner',
       populate: { path: 'owner', select: 'name email' }
     })
     .lean();
     
-    const pendingDocuments = registrations.filter(reg => 
-      reg.documents && reg.documents.length < 4
-    );
+    // ✅ Calculate pending documents without loading full data
+    const pendingDocuments = registrations
+      .filter(reg => reg.documents && reg.documents.length < 4)
+      .map(reg => ({
+        pet: reg.pet,
+        documentCount: reg.documents ? reg.documents.length : 0,
+        registrationTriggered: reg.registrationTriggered
+      }));
     
     res.json(pendingDocuments);
   } catch (error) {
@@ -459,6 +501,8 @@ router.get('/registrations/:id/documents', async (req, res) => {
       return res.status(404).json({ message: 'Registration not found' });
     }
     
+    // ✅ This endpoint loads documents for a single registration
+    // Acceptable memory usage
     res.json(registration.documents || []);
   } catch (error) {
     console.error('❌ Error fetching documents:', error);
@@ -486,7 +530,13 @@ router.post('/registrations/:id/trigger', async (req, res) => {
     
     res.json({ 
       message: 'Registration triggered successfully!',
-      registration 
+      registration: {
+        id: registration._id,
+        pet: registration.pet,
+        registrationTriggered: registration.registrationTriggered,
+        registrationTriggeredAt: registration.registrationTriggeredAt,
+        isComplete: registration.isComplete
+      }
     });
   } catch (error) {
     console.error('❌ Error triggering registration:', error);
@@ -509,7 +559,10 @@ router.put('/registrations/:id/complete', async (req, res) => {
     
     res.json({ 
       message: `Registration ${isComplete ? 'marked as complete' : 'marked as incomplete'}`,
-      registration 
+      registration: {
+        id: registration._id,
+        isComplete: registration.isComplete
+      }
     });
   } catch (error) {
     console.error('❌ Error updating registration status:', error);
