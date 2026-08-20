@@ -105,24 +105,18 @@ router.get('/dashboard/stats', async (req, res) => {
   }
 });
 
-// ==================== CUSTOMER MANAGEMENT ====================
+// ==================== CUSTOMER MANAGEMENT - ALL CUSTOMERS ====================
 router.get('/customers', async (req, res) => {
-  console.log('👥 Customers requested');
+  console.log('👥 All customers requested');
   try {
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(20, parseInt(req.query.limit) || 20); // ✅ Reduced to 20
-    const skip = (page - 1) * limit;
+    // ✅ Get ALL customers - no pagination limit
+    const customers = await User.find({ role: 'user' })
+      .select('-password')
+      .sort({ createdAt: -1 })
+      .lean()
+      .catch(() => []);
     
-    const [total, customers] = await Promise.all([
-      User.countDocuments({ role: 'user' }).catch(() => 0),
-      User.find({ role: 'user' })
-        .select('-password')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean()
-        .catch(() => [])
-    ]);
+    console.log(`✅ Found ${customers.length} total customers`);
     
     // Get pet counts for each customer
     const customerIds = customers.map(c => c._id);
@@ -156,12 +150,7 @@ router.get('/customers', async (req, res) => {
     
     res.json({
       customers: customersWithStats,
-      pagination: {
-        total: total || 0,
-        page,
-        limit,
-        pages: Math.ceil((total || 0) / limit)
-      }
+      total: customersWithStats.length
     });
   } catch (error) {
     console.error('❌ Error fetching customers:', error);
@@ -203,7 +192,7 @@ router.get('/pets', async (req, res) => {
   console.log('🐾 Pets requested');
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(20, parseInt(req.query.limit) || 20); // ✅ Reduced to 20
+    const limit = Math.min(50, parseInt(req.query.limit) || 50); // ✅ Increased to 50
     const skip = (page - 1) * limit;
     
     // ✅ OPTIMIZED: Select only needed fields, exclude ALL file data
@@ -289,7 +278,7 @@ router.get('/registrations', async (req, res) => {
   console.log('📋 Registrations requested');
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(20, parseInt(req.query.limit) || 20); // ✅ Reduced to 20
+    const limit = Math.min(50, parseInt(req.query.limit) || 50); // ✅ Increased to 50
     const skip = (page - 1) * limit;
     
     // ✅ CRITICAL FIX: Exclude documents array from query
