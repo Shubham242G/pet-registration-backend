@@ -175,7 +175,7 @@ router.get('/customers/:id', async (req, res) => {
     let registrations = [];
     if (petIds.length > 0) {
       registrations = await RegistrationForm.find({ pet: { $in: petIds } })
-        .select('-documents') // ✅ EXCLUDE documents
+        .select('-documents') // ✅ EXCLUDE documents for list view
         .populate('pet', 'name species ageYears ageMonths gender')
         .lean();
     }
@@ -192,14 +192,14 @@ router.get('/pets', async (req, res) => {
   console.log('🐾 Pets requested');
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(50, parseInt(req.query.limit) || 50); // ✅ Increased to 50
+    const limit = Math.min(50, parseInt(req.query.limit) || 50);
     const skip = (page - 1) * limit;
     
     // ✅ OPTIMIZED: Select only needed fields, exclude ALL file data
     const [total, pets] = await Promise.all([
       Pet.countDocuments().catch(() => 0),
       Pet.find()
-        .select('name species ageYears ageMonths gender city registrationStage registrationStatus owner createdAt updatedAt') // Only what's needed
+        .select('name species ageYears ageMonths gender city registrationStage registrationStatus owner createdAt updatedAt')
         .populate('owner', 'name email username mobile')
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -230,7 +230,7 @@ router.get('/pets', async (req, res) => {
         registrationTriggered: registrationMap[pet._id].registrationTriggered || false,
         registrationTriggeredAt: registrationMap[pet._id].registrationTriggeredAt || null,
         isComplete: registrationMap[pet._id].isComplete || false,
-        documentCount: 0 // ✅ We don't load documents, so count is 0
+        documentCount: 0
       } : null
     }));
     
@@ -249,9 +249,12 @@ router.get('/pets', async (req, res) => {
   }
 });
 
+// ==================== PET MANAGEMENT - GET SINGLE PET WITH DOCUMENTS ====================
 router.get('/pets/:id', async (req, res) => {
   try {
-    // ✅ Get pet WITHOUT file fields
+    console.log(`🔍 Fetching pet ${req.params.id} with documents...`);
+    
+    // Get pet WITHOUT file fields (for performance)
     const pet = await Pet.findById(req.params.id)
       .select('-antiRabiesCertificate -idProof -residenceProof -ownerWithPetPhoto -petPhoto -vaccinationCard -vaccinationCertificate -sterilizationCertificate -ownerPhoto -ownerSignature -proofOfIdentity -proofOfAddress -vaccinationRecord -petPhotographs -aadharCard -residentialProof -petPhotograph -antiRabiesLeptoCertificate')
       .populate('owner', 'name email username mobile')
@@ -261,14 +264,64 @@ router.get('/pets/:id', async (req, res) => {
       return res.status(404).json({ message: 'Pet not found' });
     }
     
-    // ✅ Get registration WITHOUT documents
+    // ✅ Load registration WITH documents for this specific pet
     const registration = await RegistrationForm.findOne({ pet: pet._id })
-      .select('-documents') // ✅ EXCLUDE documents
-      .lean();
+      .lean(); // ✅ REMOVED .select('-documents') - we want documents!
+    
+    console.log(`✅ Found ${registration?.documents?.length || 0} documents for pet ${pet.name}`);
+    
+    // Log first document to verify
+    if (registration?.documents?.length > 0) {
+      const firstDoc = registration.documents[0];
+      console.log('📄 First document:', {
+        name: firstDoc.documentName,
+        hasFileData: !!firstDoc.fileData,
+        fileDataLength: firstDoc.fileData?.length || 0
+      });
+    }
     
     res.json({ pet, registration });
   } catch (error) {
     console.error('❌ Error fetching pet:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ==================== GET PET DOCUMENTS ONLY ====================
+router.get('/pets/:id/documents', async (req, res) => {
+  try {
+    console.log(`📄 Fetching documents for pet ${req.params.id}`);
+    
+    const pet = await Pet.findById(req.params.id);
+    if (!pet) {
+      return res.status(404).json({ message: 'Pet not found' });
+    }
+    
+    const registration = await RegistrationForm.findOne({ pet: pet._id });
+    
+    if (!registration) {
+      return res.json({ documents: [], message: 'No registration found' });
+    }
+    
+    // Return ONLY the documents with full data
+    const documents = registration.documents || [];
+    console.log(`📄 Found ${documents.length} documents`);
+    
+    // Log first document to verify
+    if (documents.length > 0) {
+      console.log('📄 First document:', {
+        name: documents[0].documentName,
+        hasFileData: !!documents[0].fileData,
+        fileDataLength: documents[0].fileData?.length || 0
+      });
+    }
+    
+    res.json({ 
+      documents: documents,
+      count: documents.length
+    });
+  } catch (error) {
+    console.error('❌ Error fetching documents:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -278,7 +331,7 @@ router.get('/registrations', async (req, res) => {
   console.log('📋 Registrations requested');
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(50, parseInt(req.query.limit) || 50); // ✅ Increased to 50
+    const limit = Math.min(50, parseInt(req.query.limit) || 50);
     const skip = (page - 1) * limit;
     
     // ✅ CRITICAL FIX: Exclude documents array from query
@@ -347,6 +400,74 @@ router.get('/registrations/:id', async (req, res) => {
   } catch (error) {
     console.error('❌ Error fetching registration:', error);
     res.status(500).json({ message: error.message });
+  }
+});
+
+// ==================== REGISTRATION WITH DOCUMENT COUNTS ====================
+router.get('/registrations-with-docs', async (req, res) => {
+  console.log('📋 Registrations with document info requested');
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, parseInt(req.query.limit) || 50);
+    const skip = (page - 1) * limit;
+    
+    // ✅ Load registrations WITHOUT document data (for performance)
+    const [total, registrations] = await Promise.all([
+      RegistrationForm.countDocuments().catch(() => 0),
+      RegistrationForm.find()
+        .select('-documents') // Still exclude for list view
+        .populate({
+          path: 'pet',
+          select: 'name species ageYears ageMonths gender city registrationStage owner',
+          populate: {
+            path: 'owner',
+            select: 'name email username mobile'
+          }
+        })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean()
+        .catch(() => [])
+    ]);
+    
+    // ✅ Get document counts separately
+    const petIds = registrations.map(r => r.pet?._id).filter(id => id);
+    let docCounts = {};
+    if (petIds.length > 0) {
+      const forms = await RegistrationForm.find(
+        { pet: { $in: petIds } },
+        { pet: 1, documents: 1 }
+      ).lean();
+      
+      forms.forEach(form => {
+        docCounts[form.pet] = form.documents?.length || 0;
+      });
+    }
+    
+    // Add document count to each registration
+    const registrationsWithCount = registrations.map(reg => ({
+      ...reg,
+      documentCount: docCounts[reg.pet?._id] || 0
+    }));
+    
+    console.log(`✅ Found ${registrationsWithCount.length} registrations with doc counts`);
+    
+    res.json({
+      registrations: registrationsWithCount,
+      pagination: {
+        total: total || 0,
+        page,
+        limit,
+        pages: Math.ceil((total || 0) / limit)
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error fetching registrations:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch registrations',
+      error: error.message 
+    });
   }
 });
 
@@ -458,7 +579,7 @@ router.get('/documents/pending', async (req, res) => {
       'documents.0': { $exists: true },
       registrationTriggered: false
     })
-    .select('pet documents registrationTriggered') // Include documents for counting
+    .select('pet documents registrationTriggered')
     .populate({
       path: 'pet',
       select: 'name owner',
