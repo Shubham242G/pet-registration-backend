@@ -113,6 +113,8 @@ app.use('/api/admin', require('./routes/admin/admin'));
 app.use('/api/whatsapp-auth', require('./routes/whatsappAuth'));
 app.use('/api/payment', require('./routes/payment'));
 app.use('/api/blog', require('./routes/blog'));
+app.use('/api/faqs', require('./routes/faq'));
+
 // app.use('/api/bot', require('./routes/bot'));
 
 // Test endpoint to verify CORS is working
