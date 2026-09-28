@@ -89,13 +89,6 @@ router.post('/verify-otp', async (req, res) => {
         { expiresIn: '7d' }
       );
       
-      let userRegistrationFee = 942.82;
-      if (user.city === 'ghaziabad') {
-        userRegistrationFee = 1532.82;
-      } else if (user.city && ['delhi', 'noida', 'gurgaon'].includes(user.city)) {
-        userRegistrationFee = 942.82;
-      }
-      
       return res.json({
         success: true,
         requiresRegistration: false,
@@ -107,9 +100,7 @@ router.post('/verify-otp', async (req, res) => {
           username: user.username || user.name,
           name: user.name,
           role: user.role,
-          city: user.city || 'ghaziabad',
-          pricingTier: user.pricingTier || 'standard',
-          registrationFee: userRegistrationFee
+          city: user.city || 'ghaziabad'
         }
       });
     }
@@ -138,9 +129,11 @@ router.post('/verify-otp', async (req, res) => {
 });
 
 // STEP 3: Complete registration
+// ✅ CHANGED: No longer requires city or registrationFee
+// City is now selected per-pet in AddPetModal, not per-user
 router.post('/complete-registration', async (req, res) => {
   try {
-    const { tempToken, name, username, city, registrationFee } = req.body;
+    const { tempToken, name, username } = req.body;
     
     if (!tempToken || !name) {
       return res.status(400).json({ error: 'Name and valid session are required' });
@@ -171,34 +164,15 @@ router.post('/complete-registration', async (req, res) => {
       }
     }
     
-    // ✅ FIX: Use 'ghaziabad' as default instead of 'other'
-    const selectedCity = city || 'ghaziabad';
-    const validCities = ['ghaziabad', 'delhi', 'noida', 'gurgaon', 'faridabad'];
-    const finalCity = validCities.includes(selectedCity) ? selectedCity : 'ghaziabad';
-    
-    const pricingTier = selectedCity === 'ghaziabad' ? 'ghaziabad' : 'standard';
-    
-    let finalRegistrationFee = registrationFee;
-    if (!finalRegistrationFee) {
-      if (selectedCity === 'ghaziabad') {
-        finalRegistrationFee = 1532.82;
-      } else if (['delhi', 'noida', 'gurgaon'].includes(selectedCity)) {
-        finalRegistrationFee = 942.82;
-      } else {
-        finalRegistrationFee = 942.82;
-      }
-    }
-    
-    // ✅ FIX: Ensure city is a valid enum value
+    // ✅ Default city is ghaziabad — will be overwritten per-pet
     user = new User({
       whatsappNumber,
       name: name,
       username: username || name.toLowerCase().replace(/\s/g, '') + Math.floor(Math.random() * 1000),
       isVerified: true,
       lastLoginAt: new Date(),
-      city: finalCity, // ✅ Always a valid city
-      pricingTier: pricingTier,
-      registrationFee: finalRegistrationFee
+      city: 'ghaziabad',
+      pricingTier: 'standard',
     });
     
     await user.save();
@@ -219,9 +193,7 @@ router.post('/complete-registration', async (req, res) => {
         username: user.username,
         name: user.name,
         role: user.role,
-        city: user.city,
-        pricingTier: user.pricingTier,
-        registrationFee: finalRegistrationFee
+        city: user.city
       }
     });
     

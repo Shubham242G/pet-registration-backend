@@ -4,6 +4,10 @@ const Pet = require('../models/Pet');
 const RegistrationForm = require('../models/RegsitrationForm');
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
+const { 
+  sendAdminPaymentNotification, 
+  sendAdminDocumentsNotification 
+} = require('../servcies/whatsappService');
 
 // ============================================
 // HELPER FUNCTIONS
@@ -98,7 +102,6 @@ router.get('/admin/registrations', auth, async (req, res) => {
 
     console.log(`📊 Found ${registrations.length} registrations`);
 
-    // Transform the data - INCLUDING FULL DOCUMENT DATA
     const transformed = registrations.map(form => {
       const docData = form.documents?.map(doc => ({
         _id: doc._id,
@@ -106,7 +109,7 @@ router.get('/admin/registrations', auth, async (req, res) => {
         fileName: doc.fileName,
         fileSize: doc.fileSize,
         mimeType: doc.mimeType,
-        fileData: doc.fileData || null, // ✅ Include fileData
+        fileData: doc.fileData || null,
         uploadedAt: doc.uploadedAt
       })) || [];
 
@@ -131,7 +134,6 @@ router.get('/admin/registrations', auth, async (req, res) => {
       };
     });
 
-    // Log how many documents have fileData
     let docsWithFileData = 0;
     let totalDocs = 0;
     transformed.forEach(reg => {
@@ -468,6 +470,7 @@ router.get('/admin/users', auth, async (req, res) => {
 
 // ============================================
 // ✅ UPLOAD DOCUMENT
+// 🔔 Fires admin notification when ALL required docs are uploaded
 // ============================================
 router.post('/:petId/documents', auth, async (req, res) => {
   try {
@@ -518,6 +521,9 @@ router.post('/:petId/documents', auth, async (req, res) => {
       });
     }
 
+    // ✅ Check if all docs were already complete BEFORE this upload
+    const wasAlreadyComplete = hasAllDocuments(pet, registrationForm);
+
     const docObj = {
       documentName,
       fileData,
@@ -550,10 +556,26 @@ router.post('/:petId/documents', auth, async (req, res) => {
 
     const hasAllDocs = hasAllDocuments(pet, registrationForm);
 
-    if (hasAllDocs && pet.registrationStatus === 'not_started') {
-      pet.registrationStatus = 'documents_uploaded';
-      pet.registrationStage = 1;
+    // ✅ If ALL docs are now uploaded, advance stage and notify admin
+    if (hasAllDocs && pet.registrationStatus !== 'awaiting_license' && pet.registrationStatus !== 'license_delivered') {
+      pet.registrationStatus = 'awaiting_license';
+      pet.registrationStage = 3;
       await pet.save();
+
+      console.log(`✅ All documents uploaded for pet ${pet.name}. Advancing to stage 3 (awaiting_license).`);
+
+      // ✅ Fire admin notification ONLY on the first time we hit "all docs done"
+      if (!wasAlreadyComplete) {
+        const owner = await User.findById(pet.owner);
+        sendAdminDocumentsNotification(
+          pet,
+          owner,
+          registrationForm.documents.length,
+          requiredDocs.length
+        ).catch(err => {
+          console.error('❌ sendAdminDocumentsNotification failed:', err.message);
+        });
+      }
     }
 
     res.json({
@@ -622,12 +644,12 @@ router.delete('/:petId/documents/:documentName', auth, async (req, res) => {
     };
     await Pet.findByIdAndUpdate(pet._id, updateData);
 
-    const requiredDocs = getRequiredDocumentNames(pet);
     const hasAllDocs = hasAllDocuments(pet, registrationForm);
 
-    if (!hasAllDocs && pet.registrationStatus === 'documents_uploaded') {
-      pet.registrationStatus = 'not_started';
-      pet.registrationStage = 0;
+    // If docs are no longer complete, drop back to stage 2 (still paid, but not "awaiting license")
+    if (!hasAllDocs && (pet.registrationStatus === 'awaiting_license' || pet.registrationStatus === 'documents_uploaded')) {
+      pet.registrationStatus = pet.paymentStatus === 'completed' ? 'form_submitted' : 'not_started';
+      pet.registrationStage = pet.paymentStatus === 'completed' ? 2 : 0;
       await pet.save();
     }
 
@@ -642,7 +664,110 @@ router.delete('/:petId/documents/:documentName', auth, async (req, res) => {
 });
 
 // ============================================
-// ✅ TRIGGER REGISTRATION
+// ✅ NEW: TRIGGER PAYMENT COMPLETE
+// Called after Razorpay verify-payment succeeds.
+// Does NOT require documents. Notifies admin.
+// ============================================
+router.post('/:petId/trigger-payment-complete', auth, async (req, res) => {
+  try {
+    const { petId } = req.params;
+    const { paymentVerified, paidAmount, tagDeliveryOption, tagDeliveryCost } = req.body;
+
+    let pet;
+    if (req.user.role === 'admin') {
+      pet = await Pet.findById(petId);
+    } else {
+      pet = await Pet.findOne({
+        _id: petId,
+        owner: req.user._id
+      });
+    }
+
+    if (!pet) {
+      return res.status(404).json({ success: false, message: 'Pet not found' });
+    }
+
+    const registrationForm = await RegistrationForm.findOne({ pet: pet._id });
+    if (!registrationForm) {
+      return res.status(404).json({ success: false, message: 'Registration form not found' });
+    }
+
+    if (!paymentVerified) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment verification required'
+      });
+    }
+
+    const cityPrices = {
+      ghaziabad: 1599,
+      gurgaon: 1699,
+      delhi: 999,
+      noida: 999,
+      faridabad: 999,
+      jaipur: 1699,
+      mumbai: 999,
+      thane: 999,
+    };
+
+    let amount = cityPrices[pet.city] || 999;
+    if (tagDeliveryOption === 'deliver_to_home' && tagDeliveryCost) {
+      amount += tagDeliveryCost;
+    }
+    const finalAmount = paidAmount || amount;
+
+    // ✅ Mark payment complete on both models
+    registrationForm.paymentStatus = 'completed';
+    registrationForm.paymentAmount = finalAmount;
+    await registrationForm.save();
+
+    pet.paymentStatus = 'completed';
+    pet.paymentAmount = finalAmount;
+    pet.paymentDate = new Date();
+
+    if (tagDeliveryOption) {
+      pet.tagDelivery = {
+        option: tagDeliveryOption,
+        cost: tagDeliveryCost || 0
+      };
+    }
+
+    // ✅ Move to stage 2 (form_submitted / payment done) if not already past that
+    if (pet.registrationStage < 2) {
+      pet.registrationStage = 2;
+      pet.registrationStatus = 'form_submitted';
+    }
+
+    await pet.save();
+
+    console.log(`✅ Payment complete for pet ${pet.name}. Stage → ${pet.registrationStage}`);
+
+    // ✅ Fire admin notification for payment
+    const owner = await User.findById(pet.owner);
+    sendAdminPaymentNotification(pet, owner, finalAmount, pet.paymentId || null)
+      .catch(err => console.error('❌ sendAdminPaymentNotification failed:', err.message));
+
+    res.json({
+      success: true,
+      message: 'Payment marked complete. Admin notified.',
+      pet: {
+        _id: pet._id,
+        name: pet.name,
+        registrationStage: pet.registrationStage,
+        registrationStatus: pet.registrationStatus,
+        paymentStatus: pet.paymentStatus,
+        paymentAmount: pet.paymentAmount
+      }
+    });
+  } catch (error) {
+    console.error('❌ trigger-payment-complete error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ============================================
+// ✅ LEGACY: TRIGGER REGISTRATION (kept for backward compat)
+// Now decoupled from docs — only used for edge cases.
 // ============================================
 router.post('/:petId/trigger-registration', auth, async (req, res) => {
   try {
@@ -668,16 +793,6 @@ router.post('/:petId/trigger-registration', auth, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Registration form not found' });
     }
 
-    const requiredDocs = getRequiredDocumentNames(pet);
-    const hasAllDocs = hasAllDocuments(pet, registrationForm);
-
-    if (!hasAllDocs) {
-      return res.status(400).json({
-        success: false,
-        message: 'All required documents must be uploaded'
-      });
-    }
-
     if (!paymentVerified) {
       return res.status(400).json({
         success: false,
@@ -700,12 +815,10 @@ router.post('/:petId/trigger-registration', auth, async (req, res) => {
     if (tagDeliveryOption === 'deliver_to_home' && tagDeliveryCost) {
       amount += tagDeliveryCost;
     }
-
     const finalAmount = paidAmount || amount;
 
     registrationForm.registrationTriggered = true;
     registrationForm.registrationTriggeredAt = new Date();
-    registrationForm.isComplete = true;
     registrationForm.paymentStatus = 'completed';
     registrationForm.paymentAmount = finalAmount;
     await registrationForm.save();
@@ -725,6 +838,10 @@ router.post('/:petId/trigger-registration', auth, async (req, res) => {
       };
     }
     await pet.save();
+
+    const owner = await User.findById(pet.owner);
+    sendAdminPaymentNotification(pet, owner, finalAmount, pet.paymentId || null)
+      .catch(err => console.error('❌ admin notify failed:', err.message));
 
     res.json({
       success: true,
@@ -773,7 +890,8 @@ router.get('/:petId/status', auth, async (req, res) => {
           name: pet.name,
           city: pet.city,
           registrationStatus: pet.registrationStatus || 'not_started',
-          registrationStage: pet.registrationStage || 0
+          registrationStage: pet.registrationStage || 0,
+          paymentStatus: pet.paymentStatus || 'pending'
         },
         registration: {
           hasRegistrationForm: !!registrationForm,
