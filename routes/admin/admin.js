@@ -168,8 +168,8 @@ router.get('/customers/:id', async (req, res) => {
     
     // ✅ Get pets WITHOUT file fields
     const pets = await Pet.find({ owner: customer._id })
-      .select('-antiRabiesCertificate -idProof -residenceProof -ownerWithPetPhoto -petPhoto -vaccinationCard -vaccinationCertificate -sterilizationCertificate -ownerPhoto -ownerSignature -proofOfIdentity -proofOfAddress -vaccinationRecord -petPhotographs -aadharCard -residentialProof -petPhotograph -antiRabiesLeptoCertificate')
-      .lean();
+  .select('name species breed ageYears ageMonths gender color city registrationStage registrationStatus profilePicture license.number license.issuedAt license.expiresAt createdAt updatedAt')
+  .lean();
     
     const petIds = pets.map(p => p._id);
     let registrations = [];
